@@ -299,10 +299,10 @@ def display_visual_pipeline():
             embeddings_model = st.session_state.embeddings_model
             vectorstore = st.session_state.vectorstore
             all_embeddings = st.session_state.all_embeddings
+            splits = st.session_state.splits
             
             # DEBUG: Show what's being searched
             with st.expander("🔍 DEBUG: What's in the Vector DB?"):
-                splits = st.session_state.splits
                 st.write(f"Total chunks: {len(splits)}")
                 st.write("**First 3 chunks (sample):**")
                 for i in range(min(3, len(splits))):
@@ -311,8 +311,26 @@ def display_visual_pipeline():
             # Get query vector
             query_vector = embeddings_model.embed_query(query_input)
             
-            # Retrieve similar docs
-            retrieved_docs = vectorstore.similarity_search(query_input, k=3)
+            # Semantic search
+            retrieved_docs = vectorstore.similarity_search(query_input, k=5)
+            
+            # KEYWORD FALLBACK: If similarity is low, search by keywords
+            query_keywords = query_input.lower().split()
+            keyword_matches = []
+            
+            for i, split in enumerate(splits):
+                content_lower = split.page_content.lower()
+                matches = sum(1 for kw in query_keywords if kw in content_lower)
+                if matches > 0:
+                    keyword_matches.append((i, split, matches))
+            
+            # Sort by keyword match count
+            keyword_matches.sort(key=lambda x: x[2], reverse=True)
+            
+            # Use top 3 from semantic OR keyword search (whichever better)
+            if keyword_matches and keyword_matches[0][2] >= 2:
+                retrieved_docs = [match[1] for match in keyword_matches[:3]]
+                st.info("🔑 Used keyword matching (better for your question type)")
             
             with st.expander("🔍 DEBUG: Retrieved Results"):
                 st.write(f"Query: {query_input}")
