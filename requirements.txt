@@ -1,7 +1,23 @@
+# Core
+streamlit
+python-dotenv
+
+# LangChain Core
 langchain
 langchain-community
-langchain-text-splitters
-langchain-chroma
+langchain-core
+
+# Embeddings
+sentence-transformers
+
+# Vector Store
+chromadb
+
+# PDF Handling
 pypdf
-streamlit
-langchain-huggingface
+
+# LLM (for Day 2)
+langchain-groq
+
+# Optional but useful
+tiktoken

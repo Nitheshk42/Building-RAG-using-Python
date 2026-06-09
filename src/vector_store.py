@@ -1,36 +1,27 @@
-# from langchain_chroma import Chroma
+import os
+from langchain_community.vectorstores import Chroma
+from src.embeddings import get_embeddings
 
-# def create_vector_store(splits, embeddings):
-#     vectorstore = Chroma.from_documents(
-#         documents=splits,
-#         embedding=embeddings,
-#         persist_directory="./chroma_db"
-#     )
-#     return vectorstore
+CHROMA_DB_PATH = "chroma_db"
 
-
-# def explain_chroma_index():
-#     """Returns explanation text for UI"""
-#     return """
-#     **How ChromaDB Creates Index Behind the Scenes:**
-
-#     1. **Converts all chunks into vectors** (384 numbers each)
-#     2. **Builds HNSW Index** (Hierarchical Navigable Small World)
-#        - Creates multiple layers of connections between vectors
-#        - Like building a smart GPS map of your data
-#     3. Saves everything in `./chroma_db` folder:
-#        - vector data
-#        - metadata (original text)
-#        - index files for fast search
-#     """
-
-from langchain_chroma import Chroma
-import numpy as np
-
-def create_vector_store(splits, embeddings):
+def create_vector_store(docs, embeddings=None):
+    """Create new vector store"""
+    if embeddings is None:
+        embeddings = get_embeddings()
+    
     vectorstore = Chroma.from_documents(
-        documents=splits,
+        documents=docs,
         embedding=embeddings,
-        persist_directory="./chroma_db"
+        persist_directory=CHROMA_DB_PATH
     )
     return vectorstore
+
+def get_vectorstore():
+    """Load existing vector store"""
+    embeddings = get_embeddings()
+    if os.path.exists(CHROMA_DB_PATH) and len(os.listdir(CHROMA_DB_PATH)) > 0:
+        return Chroma(
+            persist_directory=CHROMA_DB_PATH,
+            embedding_function=embeddings
+        )
+    return None
