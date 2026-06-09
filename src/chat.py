@@ -19,7 +19,6 @@ def display_chat_interface():
 
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                # Try session state first, then load from disk
                 vectorstore = st.session_state.get("vectorstore") or get_vectorstore()
                 
                 if not vectorstore:
@@ -27,15 +26,8 @@ def display_chat_interface():
                     return
                 
                 rag_chain = get_rag_chain(vectorstore)
-                response = rag_chain.invoke(prompt)
-                answer = response["answer"]
+                answer = rag_chain.invoke({"question": prompt})  # Returns string directly
                 
                 st.markdown(answer)
-                
-                if "context" in response and response["context"]:
-                    with st.expander("📌 Sources"):
-                        for i, doc in enumerate(response["context"][:3], 1):
-                            st.write(f"**Source {i}:**")
-                            st.caption(doc.page_content[:400] + "...")
         
         st.session_state.messages.append({"role": "assistant", "content": answer})
