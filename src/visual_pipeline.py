@@ -1,502 +1,3 @@
-# import streamlit as st
-# import os
-# import numpy as np
-# import matplotlib.pyplot as plt
-# from sklearn.manifold import TSNE
-# import warnings
-# warnings.filterwarnings("ignore")
-
-# from src.document_loader import load_documents
-# from src.text_splitter import split_documents
-# from src.embeddings import get_embeddings
-# from src.vector_store import create_vector_store
-
-# # ============= KID-FRIENDLY EXPLANATION =============
-# def show_concept_card(title, emoji, explanation):
-#     """Display colorful concept cards"""
-#     st.markdown(f"""
-#     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-#                 padding: 15px; border-radius: 10px; margin: 10px 0;">
-#         <h3 style="color: white; margin: 0;">{emoji} {title}</h3>
-#         <p style="color: white; margin: 5px 0;">{explanation}</p>
-#     </div>
-#     """, unsafe_allow_html=True)
-
-# def display_visual_pipeline():
-#     """All visual learning stages - Day 2"""
-#     st.title("📚 Visual RAG Pipeline - How It Actually Works")
-#     st.write("🎯 Watch how documents become searchable magic ✨")
-
-#     # Sidebar Upload
-#     with st.sidebar:
-#         st.header("📤 Upload Documents")
-#         uploaded_files = st.file_uploader("Choose PDF files", type="pdf", accept_multiple_files=True)
-        
-#         if uploaded_files:
-#             st.success(f"✅ {len(uploaded_files)} file(s) selected")
-#             if st.button("💾 Save Files to Data Folder"):
-#                 os.makedirs("data", exist_ok=True)
-#                 for uploaded_file in uploaded_files:
-#                     file_path = os.path.join("data", uploaded_file.name)
-#                     with open(file_path, "wb") as f:
-#                         f.write(uploaded_file.getbuffer())
-#                 st.success("✅ All files saved to `data/` folder!")
-
-#     # Stage Selection
-#     stage = st.radio("Go to stage:", [
-#         "1️⃣ Chunking", "2️⃣ Embeddings", "3️⃣ Vector DB", "4️⃣ HNSW Search"
-#     ], horizontal=True)
-
-#     # ======================== STAGE 1: CHUNKING ========================
-#     if stage == "1️⃣ Chunking":
-#         st.header("Stage 1: Breaking Books into Pieces")
-#         show_concept_card(
-#             "What's Chunking?",
-#             "✂️",
-#             "Imagine cutting a long book into small cards. Each card has ~1000 characters (like 200 words). This helps the AI find answers faster!"
-#         )
-        
-#         col1, col2 = st.columns([2, 1])
-#         with col1:
-#             with st.expander("📖 See sample document"):
-#                 if os.path.exists("data") and os.listdir("data"):
-#                     docs = load_documents()
-#                     if docs:
-#                         st.write(docs[0].page_content[:500])
-        
-#         with col2:
-#             if st.button("✂️ Chunk Document", use_container_width=True):
-#                 if not os.path.exists("data") or len(os.listdir("data")) == 0:
-#                     st.error("❌ No PDFs in data/ folder")
-#                 else:
-#                     documents = load_documents()
-#                     splits = split_documents(documents)
-#                     st.session_state.splits = splits
-#                     st.session_state.documents = documents
-                    
-#                     st.success(f"✅ Split into {len(splits)} cards!")
-#                     st.metric("Total Cards Created", len(splits))
-        
-#         if 'splits' in st.session_state:
-#             st.subheader("📊 How Big Are Each Card?")
-#             splits = st.session_state.splits
-            
-#             fig, ax = plt.subplots(figsize=(14, 4))
-#             chunk_lengths = [len(s.page_content) for s in splits[:20]]
-#             colors = ['#667eea' if i % 2 == 0 else '#764ba2' for i in range(len(chunk_lengths))]
-            
-#             bars = ax.barh(range(len(chunk_lengths)), chunk_lengths, color=colors, edgecolor='black', linewidth=0.8)
-#             ax.set_xlabel("Characters (like letters in a word)", fontsize=12, fontweight='bold')
-#             ax.set_ylabel("Card Number", fontsize=12, fontweight='bold')
-#             ax.set_title("🎴 Size of Each Card (1st 20 cards)", fontweight='bold', fontsize=14)
-#             ax.axvline(1000, color='red', linestyle='--', linewidth=3, label='Perfect Size = 1000 chars')
-#             ax.legend(fontsize=11)
-#             ax.grid(axis='x', alpha=0.3)
-            
-#             for i, bar in enumerate(bars):
-#                 width = bar.get_width()
-#                 ax.text(width, bar.get_y() + bar.get_height()/2, f' {int(width)}', 
-#                        va='center', fontsize=9, fontweight='bold')
-            
-#             st.pyplot(fig)
-#             plt.close()
-            
-#             st.write("**First 3 Cards (Examples):**")
-#             for i in range(min(3, len(splits))):
-#                 with st.expander(f"🎴 Card {i+1} ({len(splits[i].page_content)} characters)"):
-#                     st.text(splits[i].page_content[:300] + "...")
-
-#     # ======================== STAGE 2: EMBEDDINGS ========================
-#     elif stage == "2️⃣ Embeddings":
-#         st.header("Stage 2: Transform Cards into Brain-Vectors")
-#         show_concept_card(
-#             "What's an Embedding?",
-#             "🧠",
-#             "Each card gets converted into 384 magic numbers (a vector). Think of it like: the AI reads the card and assigns it a position in a huge 384-dimensional space. Similar cards stay close together!"
-#         )
-        
-#         if st.button("🧠 Create Embeddings", use_container_width=True):
-#             if 'splits' not in st.session_state:
-#                 st.error("❌ Complete Stage 1 first!")
-#             else:
-#                 splits = st.session_state.splits
-#                 embeddings_model = get_embeddings()
-                
-#                 all_embeddings = []
-#                 progress_bar = st.progress(0)
-#                 for idx, split in enumerate(splits):
-#                     emb = embeddings_model.embed_query(split.page_content[:300])
-#                     all_embeddings.append(emb)
-#                     progress_bar.progress((idx + 1) / len(splits))
-                
-#                 all_embeddings = np.array(all_embeddings)
-#                 st.session_state.embeddings_model = embeddings_model
-#                 st.session_state.all_embeddings = all_embeddings
-                
-#                 col1, col2, col3 = st.columns(3)
-#                 col1.metric("🤖 AI Brain", "all-MiniLM-L6-v2")
-#                 col2.metric("📏 Magic Numbers Per Card", "384")
-#                 col3.metric("💾 Total Cards Converted", len(all_embeddings))
-                
-#                 st.success(f"✅ Converted {len(all_embeddings)} cards to vectors!")
-
-#         if 'all_embeddings' in st.session_state:
-#             st.subheader("🌌 Vector Space Map (Squashed to 2D)")
-#             st.info("💡 RED = Similar cards stay together. BLUE = Different cards spread apart.")
-            
-#             all_emb = st.session_state.all_embeddings
-#             tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(all_emb)-1))
-#             embeddings_2d = tsne.fit_transform(all_emb)
-            
-#             fig, ax = plt.subplots(figsize=(12, 6))
-#             scatter = ax.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], 
-#                                 c=range(len(embeddings_2d)), cmap='cool', 
-#                                 s=200, alpha=0.8, edgecolors='black', linewidth=1)
-#             ax.set_title("🗺️ Vector Space: Similar Cards Cluster Together", fontweight='bold', fontsize=14)
-#             ax.set_xlabel("Semantic Meaning Axis 1", fontsize=11)
-#             ax.set_ylabel("Semantic Meaning Axis 2", fontsize=11)
-#             cbar = plt.colorbar(scatter, ax=ax)
-#             cbar.set_label('Card Number', fontsize=11)
-#             ax.grid(alpha=0.3)
-#             st.pyplot(fig)
-#             plt.close()
-
-#     # ======================== STAGE 3: VECTOR DB ========================
-#     elif stage == "3️⃣ Vector DB":
-#         st.header("Stage 3: Store Cards in Smart Library (HNSW)")
-#         show_concept_card(
-#             "What's HNSW?",
-#             "🏗️",
-#             "HNSW = Hierarchical Navigable Small World. Like a library with MULTIPLE FLOORS of organized cards. Top floor has few cards (highways), bottom floor has all cards (detailed organization)!"
-#         )
-        
-#         if st.button("💾 Create Vector Database", use_container_width=True):
-#             if 'splits' not in st.session_state:
-#                 st.error("❌ Complete Stage 1 first!")
-#             else:
-#                 splits = st.session_state.splits
-#                 embeddings_model = get_embeddings()
-                
-#                 vectorstore = create_vector_store(splits, embeddings_model)
-#                 st.session_state.vectorstore = vectorstore
-#                 st.session_state.embeddings_model = embeddings_model
-                
-#                 # Store embeddings for visualization
-#                 all_embeddings = []
-#                 for split in splits:
-#                     emb = embeddings_model.embed_query(split.page_content[:300])
-#                     all_embeddings.append(emb)
-#                 st.session_state.all_embeddings = np.array(all_embeddings)
-                
-#                 st.success("✅ Vector DB created with HNSW index!")
-
-#         if 'vectorstore' in st.session_state:
-#             st.subheader("🏢 How HNSW Organizes Your Resume Cards")
-            
-#             # Simple text explanation with visual hierarchy
-#             col1, col2, col3 = st.columns(3)
-            
-#             with col1:
-#                 st.markdown("""
-#                 ### 🔝 Top Floor
-#                 **5 Cards** (Summary)
-                
-#                 Like a city Map:
-#                 - Shows major areas
-#                 - Fast jumps
-#                 - Entry point ⭐
-#                 """)
-                
-#                 fig, ax = plt.subplots(figsize=(4, 3))
-#                 points = np.array([[2, 8], [8, 7], [5, 3], [1, 2], [9, 1]])
-#                 ax.scatter(points[:, 0], points[:, 1], s=400, c='gold', edgecolors='orange', linewidth=2)
-#                 for i in range(len(points)):
-#                     for j in range(i+1, len(points)):
-#                         ax.plot([points[i, 0], points[j, 0]], [points[i, 1], points[j, 1]], 
-#                                'orange', linewidth=2, alpha=0.5)
-#                 ax.set_xlim(0, 10)
-#                 ax.set_ylim(0, 10)
-#                 ax.set_title("Entry Points (Gold)", fontweight='bold', fontsize=10)
-#                 ax.axis('off')
-#                 st.pyplot(fig, use_container_width=True)
-#                 plt.close()
-            
-#             with col2:
-#                 st.markdown("""
-#                 ### 🏘️ Middle Floor
-#                 **15 Cards** (Districts)
-                
-#                 Like City Neighborhoods:
-#                 - More details
-#                 - Medium jumps
-#                 - Refine search
-#                 """)
-                
-#                 fig, ax = plt.subplots(figsize=(4, 3))
-#                 points = np.random.rand(15, 2) * 10
-#                 ax.scatter(points[:, 0], points[:, 1], s=300, c='skyblue', edgecolors='blue', linewidth=1.5)
-#                 for i in range(len(points)):
-#                     distances = np.linalg.norm(points - points[i], axis=1)
-#                     nearest = np.argsort(distances)[1:3]
-#                     for j in nearest:
-#                         ax.plot([points[i, 0], points[j, 0]], [points[i, 1], points[j, 1]], 
-#                                'blue', linewidth=0.8, alpha=0.3)
-#                 ax.set_xlim(0, 10)
-#                 ax.set_ylim(0, 10)
-#                 ax.set_title("Neighborhoods (Blue)", fontweight='bold', fontsize=10)
-#                 ax.axis('off')
-#                 st.pyplot(fig, use_container_width=True)
-#                 plt.close()
-            
-#             with col3:
-#                 st.markdown("""
-#                 ### 🗺️ Bottom Floor
-#                 **All Cards** (Details)
-                
-#                 Like Street Map:
-#                 - Every card here
-#                 - Precise search
-#                 - Find exact answer
-#                 """)
-                
-#                 fig, ax = plt.subplots(figsize=(4, 3))
-#                 points = np.random.rand(30, 2) * 10
-#                 ax.scatter(points[:, 0], points[:, 1], s=150, c='lightgreen', edgecolors='green', linewidth=1)
-#                 for i in range(0, len(points), 5):
-#                     distances = np.linalg.norm(points - points[i], axis=1)
-#                     nearest = np.argsort(distances)[1:2]
-#                     for j in nearest:
-#                         ax.plot([points[i, 0], points[j, 0]], [points[i, 1], points[j, 1]], 
-#                                'green', linewidth=0.5, alpha=0.2)
-#                 ax.set_xlim(0, 10)
-#                 ax.set_ylim(0, 10)
-#                 ax.set_title("All Cards (Green)", fontweight='bold', fontsize=10)
-#                 ax.axis('off')
-#                 st.pyplot(fig, use_container_width=True)
-#                 plt.close()
-            
-#             st.divider()
-#             st.markdown("""
-#             **🚀 Search Journey:**
-#             1. You ask question → Start at 🔝 Top (Gold Entry)
-#             2. Jump via highways → Reach 🏘️ Middle (Blue neighborhoods)
-#             3. Use local roads → Reach 🗺️ Bottom (Green exact cards)
-#             4. Return TOP 3 most relevant cards ✅
-#             """)
-
-#     # ======================== STAGE 4: HNSW SEARCH ========================
-#     elif stage == "4️⃣ HNSW Search":
-#         st.header("Stage 4: Finding Your Answer with HNSW Magic")
-#         show_concept_card(
-#             "How Search Works?",
-#             "🔍",
-#             "You ask a question → AI converts it to a vector → Searches HNSW like finding a house: start at TOP floor (fast highways), jump down through floors, find closest cards at BOTTOM!"
-#         )
-        
-#         query_input = st.text_input("❓ Ask your question:", placeholder="What is...?")
-        
-#         if query_input and 'vectorstore' in st.session_state and 'all_embeddings' in st.session_state:
-#             embeddings_model = st.session_state.embeddings_model
-#             vectorstore = st.session_state.vectorstore
-#             all_embeddings = st.session_state.all_embeddings
-#             splits = st.session_state.splits
-            
-#             # DEBUG: Show what's being searched
-#             with st.expander("🔍 DEBUG: What's in the Vector DB?"):
-#                 st.write(f"Total chunks: {len(splits)}")
-#                 st.write("**First 3 chunks (sample):**")
-#                 for i in range(min(3, len(splits))):
-#                     st.write(f"Chunk {i+1}: {splits[i].page_content[:150]}...")
-            
-#             # Get query vector
-#             query_vector = embeddings_model.embed_query(query_input)
-            
-#             # Semantic search
-#             retrieved_docs = vectorstore.similarity_search(query_input, k=5)
-            
-#             # KEYWORD FALLBACK: If similarity is low, search by keywords
-#             query_keywords = query_input.lower().split()
-#             keyword_matches = []
-            
-#             for i, split in enumerate(splits):
-#                 content_lower = split.page_content.lower()
-#                 matches = sum(1 for kw in query_keywords if kw in content_lower)
-#                 if matches > 0:
-#                     keyword_matches.append((i, split, matches))
-            
-#             # Sort by keyword match count
-#             keyword_matches.sort(key=lambda x: x[2], reverse=True)
-            
-#             # Use top 3 from semantic OR keyword search (whichever better)
-#             if keyword_matches and keyword_matches[0][2] >= 2:
-#                 retrieved_docs = [match[1] for match in keyword_matches[:3]]
-#                 st.info("🔑 Used keyword matching (better for your question type)")
-            
-#             with st.expander("🔍 DEBUG: Retrieved Results"):
-#                 st.write(f"Query: {query_input}")
-#                 st.write(f"Found {len(retrieved_docs)} results")
-#                 for i, doc in enumerate(retrieved_docs):
-#                     st.write(f"**Result {i+1}:** {doc.page_content[:100]}...")
-            
-#             st.success("✅ Found relevant cards!")
-            
-#             # ===== VISUALIZATION 1: SIMPLE SEARCH EXPLANATION =====
-#             st.subheader("🎯 How HNSW Found These Results")
-            
-#             col1, col2, col3 = st.columns(3)
-#             with col1:
-#                 st.info("""
-#                 **Step 1: You Ask**
-                
-#                 Question: "{}"
-#                 ↓
-#                 Convert to 384 numbers
-#                 """.format(query_input[:30]))
-            
-#             with col2:
-#                 st.warning("""
-#                 **Step 2: Search**
-                
-#                 HNSW finds similar cards
-#                 ↓
-#                 Uses highways + roads
-#                 ↓
-#                 Fast navigation
-#                 """)
-            
-#             with col3:
-#                 st.success("""
-#                 **Step 3: Results**
-                
-#                 Top 3 closest cards
-#                 ↓
-#                 Ranked by match %
-#                 ↓
-#                 Most relevant first
-#                 """)
-            
-#             # ===== RESULTS WITH SIMILARITY SCORES =====
-#             st.subheader("📌 Your 3 Most Relevant Cards (Ranked by Similarity)")
-#             st.info("💡 **Similarity Score = How close is this card's meaning to your question?** (0-100%)")
-            
-#             # Calculate proper similarity scores using cosine similarity
-#             from sklearn.metrics.pairwise import cosine_similarity
-#             query_vec = np.array([query_vector]).reshape(1, -1)
-            
-#             # Get embeddings for retrieved docs
-#             retrieved_embeddings = []
-#             for doc in retrieved_docs:
-#                 emb = embeddings_model.embed_query(doc.page_content[:300])
-#                 retrieved_embeddings.append(emb)
-            
-#             retrieved_embeddings = np.array(retrieved_embeddings)
-#             similarities = cosine_similarity(query_vec, retrieved_embeddings)[0]
-            
-#             # Show results with accurate scores
-#             for i, (doc, sim_score) in enumerate(zip(retrieved_docs, similarities), 1):
-#                 sim_percent = max(0, int(sim_score * 100))  # Convert -1 to 1 scale to 0-100
-                
-#                 with st.expander(f"✅ Card #{i} | Match Score: {sim_percent}%", expanded=(i==1)):
-#                     col1, col2 = st.columns([3, 1])
-#                     with col1:
-#                         st.write("**📄 Content:**")
-#                         st.write(doc.page_content[:400])
-#                         if len(doc.page_content) > 400:
-#                             st.caption("... (content truncated)")
-#                     with col2:
-#                         # Show score with visual bar
-#                         st.metric("Match Score", f"{sim_percent}%")
-                        
-#                         # Visual indicator
-#                         if sim_percent >= 80:
-#                             st.success("⭐ Excellent\nMatch!", icon="✅")
-#                         elif sim_percent >= 60:
-#                             st.info("👍 Good\nMatch!", icon="ℹ️")
-#                         elif sim_percent >= 40:
-#                             st.warning("✓ Okay\nMatch", icon="⚠️")
-#                         else:
-#                             st.error("❌ Poor\nMatch")
-                        
-#                         # Progress bar
-#                         st.progress(sim_score)  # 0-1 scale
-            
-#             # Add explanation of the process
-#             st.divider()
-#             st.subheader("🎓 Understanding the Similarity Score")
-            
-#             col1, col2 = st.columns(2)
-#             with col1:
-#                 st.markdown("""
-#                 **What is Similarity Score?**
-#                 - Compares your question's 384D vector with each card's 384D vector
-#                 - Uses **Cosine Similarity** (measures angle between vectors)
-#                 - Range: 0% = Completely Different | 100% = Identical
-                
-#                 **Example:**
-#                 - Q: "What is Python?"
-#                 - Card A: "Python is a programming language..." → 85% match ✅
-#                 - Card B: "Snakes live in jungles..." → 15% match ❌
-                
-#                 **Why not 100%?**
-#                 - Your question & answer cards use DIFFERENT words
-#                 - But they share SIMILAR semantic meaning
-#                 - That's why 70-85% is actually EXCELLENT match!
-#                 """)
-            
-#             with col2:
-#                 st.markdown("""
-#                 **Score Interpretation:**
-                
-#                 🟢 **80-100%** = Excellent Match!
-#                 - Directly answers your question
-#                 - Very relevant content
-                
-#                 🔵 **60-79%** = Good Match
-#                 - Related to your question
-#                 - Useful information
-                
-#                 🟡 **40-59%** = Okay Match
-#                 - Somewhat related
-#                 - May need other cards
-                
-#                 🔴 **0-39%** = Poor Match
-#                 - Weak relevance
-#                 - Not recommended
-#                 """)
-            
-#             # Visual comparison
-#             st.subheader("📊 Detailed Search Process")
-#             st.markdown("""
-#             **Step-by-Step What HNSW Did:**
-            
-#             1. **Your Question Vector** → Converted to 384 magic numbers (red star)
-#             2. **Entry Point** → Started at gold point on TOP floor (fastest)
-#             3. **Highway Jumps** → Jumped across space using orange highways (cover distance fast)
-#             4. **Descend Layers** → Went down to middle floor (blue roads), then bottom floor (green neighbors)
-#             5. **Find Neighbors** → Found closest 3 cards to your question vector
-#             6. **Calculate Scores** → Measured exact similarity % using cosine formula
-#             7. **Rank Results** → Showed top 3 in order (best match first)
-            
-#             **Why These 3 Cards?**
-#             - VectorDB searched through ALL cards
-#             - Found the 3 CLOSEST to your question in 384D space
-#             - Higher % = closer in that space = more relevant!
-#             """)
-            
-
-# st.divider()
-# st.success("""
-# **🎓 What You Learned:**
-# 1. **Stage 1 - Chunking ✂️**: Book → Small Cards (1000 chars each)
-# 2. **Stage 2 - Embeddings 🧠**: Each Card → 384 Magic Numbers (Vector)
-# 3. **Stage 3 - Vector DB 🏢**: Cards → HNSW Multi-Floor Library (Fast highways + detailed roads)
-# 4. **Stage 4 - Search 🔍**: Question → Find Similar Cards (Start TOP → Jump highways → Refine locally → ANSWER!)
-# """)
-
-# if __name__ == "__main__":
-#     display_visual_pipeline()
-
-
 import streamlit as st
 import os
 import numpy as np
@@ -514,12 +15,58 @@ from src.vector_store import create_vector_store
 def show_concept_card(title, emoji, explanation):
     """Display colorful concept cards"""
     st.markdown(f"""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 padding: 15px; border-radius: 10px; margin: 10px 0;">
         <h3 style="color: white; margin: 0;">{emoji} {title}</h3>
         <p style="color: white; margin: 5px 0;">{explanation}</p>
     </div>
     """, unsafe_allow_html=True)
+
+
+def render_hnsw_diagram(n_total, highlight_indices=None, title="HNSW: Multi-Layer Graph Structure (illustrative)"):
+    """Draw a layered HNSW graph. If highlight_indices given, mark those bottom-layer
+    nodes red (the actual retrieved chunks) and show an entry point star, to visualize a search."""
+    cap = max(3, min(n_total, 40))
+    layer_sizes = [max(3, cap // 8), max(6, cap // 3), cap]
+    layer_y = [2, 1, 0]
+    colors = ['#FFD700', '#4FC3F7', '#66BB6A']
+    names = ['Layer 2 (highways)', 'Layer 1 (roads)', 'Layer 0 (all cards)']
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    positions = []
+    for size, y, color, name in zip(layer_sizes, layer_y, colors, names):
+        xs = np.linspace(0.5, 9.5, size)
+        ax.scatter(xs, [y] * size, s=220, color=color, edgecolor='black', zorder=3,
+                   label=f'{name} ({size} shown of {n_total if y == 0 else size})')
+        positions.append(xs)
+        for i in range(size - 1):
+            ax.plot([xs[i], xs[i + 1]], [y, y], color=color, alpha=0.35, linewidth=1, zorder=1)
+
+    for i in range(len(positions[0])):
+        ax.plot([positions[0][i], positions[1][i % len(positions[1])]],
+                [layer_y[0], layer_y[1]], color='gray', linestyle='--', alpha=0.4, zorder=1)
+    for i in range(0, len(positions[1]), 1):
+        j = int(i * len(positions[2]) / len(positions[1]))
+        ax.plot([positions[1][i], positions[2][j]], [layer_y[1], layer_y[2]],
+                color='gray', linestyle='--', alpha=0.25, zorder=1)
+
+    if highlight_indices:
+        bottom_xs = positions[2]
+        cap_n = len(bottom_xs)
+        for idx in highlight_indices:
+            mapped = min(int(idx * cap_n / max(n_total, 1)), cap_n - 1)
+            ax.scatter([bottom_xs[mapped]], [layer_y[2]], s=420, color='#FF5252',
+                       edgecolor='black', zorder=4)
+        ax.scatter([positions[0][0]], [layer_y[0]], marker='*', s=500, color='red',
+                   edgecolor='black', zorder=5, label='Search entry point')
+
+    ax.set_yticks(layer_y)
+    ax.set_yticklabels(names, fontsize=11)
+    ax.set_xticks([])
+    ax.set_title(title, fontweight='bold', fontsize=13)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=2, fontsize=9)
+    fig.tight_layout()
+    return fig
 
 def display_visual_pipeline():
     """All visual learning stages - Day 2"""
@@ -690,49 +237,23 @@ def display_visual_pipeline():
                 st.success("✅ Vector DB created with HNSW index!")
 
         if 'vectorstore' in st.session_state:
-            st.subheader("🏢 How HNSW Works (Simple Analogy)")
-            
-            st.markdown("""
-            **Real Example: Finding a Restaurant in a City**
-            
-            Imagine you're at the airport asking "Where's a good pizza place?"
-            
-            **Without HNSW (Slow):**
-            - Check EVERY restaurant in the city one by one
-            - Takes forever! ❌
-            
-            **With HNSW (Fast):**
-            1. 🛫 **Top Floor**: Airport map shows only 5 major areas (Gold)
-            2. 🚗 **Drive to closest area** → Pizza district (Orange highway)
-            3. 🚶 **Middle Floor**: Within district, see 15 neighborhoods (Blue)
-            4. 🏘️ **Walk to closest neighborhood** → Italian quarter
-            5. 🗺️ **Bottom Floor**: All restaurants listed (Green)
-            6. ✅ **Found it!** → Best pizza place!
-            
-            **In Your Resume Search:**
-            - Question: "What's your recent project?"
-            - **Top Floor**: Start at top → General resume overview
-            - **Middle Floor**: Navigate to → Experience section
-            - **Bottom Floor**: Find exact → Project details
-            - Result: ✅ Accurate answer (60-65% match)
-            """)
-            
-            # Simple visual timeline instead of graphs
-            st.markdown("""
-            **Search Timeline:**
-            ```
-            Your Q: "Recent project?" 
-                    ↓
-            [1s] Start Top Floor (5 entry points) 🟡
-                    ↓
-            [0.5s] Jump to Middle Floor (15 checkpoints) 🔵
-                    ↓
-            [0.3s] Descend to Bottom Floor (all cards) 🟢
-                    ↓
-            [0.2s] Find TOP 3 CHUNKS with 60-65% match ✅
-                    ↓
-            LLM reads these 3 chunks & writes answer
-            ```
+            st.subheader("🗺️ Visual: The HNSW Layered Graph")
+            st.caption("Illustrative structure — top layer has few 'highway' nodes, bottom layer has every card.")
+            fig = render_hnsw_diagram(len(st.session_state.splits))
+            st.pyplot(fig)
+            plt.close(fig)
+
+            st.subheader("📖 Reading This Graph")
+            st.markdown(f"""
+            The diagram above shows the actual index built from your **{len(st.session_state.splits)} chunks**, drawn as 3 stacked layers:
+
+            - 🟡 **Layer 2 (top row)** — a small set of "entry point" nodes. Every search starts here because scanning a few nodes is instant.
+            - 🔵 **Layer 1 (middle row)** — a larger, denser set of nodes. Each top-layer node connects down (dashed gray lines) to nodes here.
+            - 🟢 **Layer 0 (bottom row)** — every single one of your chunks lives here, fully connected to its neighbors (solid green lines) so no chunk is unreachable.
+
+            The dashed gray lines are the actual connections a search would traverse: start at a Layer 2 node → hop down to the closest Layer 1 node → hop down again into Layer 0 → then walk along Layer 0's neighbor links until no closer chunk exists.
+
+            This is why HNSW is fast: instead of comparing your question to all {len(st.session_state.splits)} chunks one by one, it only checks a handful of nodes per layer before narrowing in.
             """)
 
     # ======================== STAGE 4: HNSW SEARCH ========================
@@ -790,42 +311,36 @@ def display_visual_pipeline():
                     st.write(f"**Result {i+1}:** {doc.page_content[:100]}...")
             
             st.success("✅ Found relevant cards!")
-            
-            # ===== VISUALIZATION 1: SIMPLE SEARCH EXPLANATION =====
-            st.subheader("🎯 How HNSW Found These Results")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.info("""
-                **Step 1: You Ask**
-                
-                Question: "{}"
-                ↓
-                Convert to 384 numbers
-                """.format(query_input[:30]))
-            
-            with col2:
-                st.warning("""
-                **Step 2: Search**
-                
-                HNSW finds similar cards
-                ↓
-                Uses highways + roads
-                ↓
-                Fast navigation
-                """)
-            
-            with col3:
-                st.success("""
-                **Step 3: Results**
-                
-                Top 3 closest cards
-                ↓
-                Ranked by match %
-                ↓
-                Most relevant first
-                """)
-            
+
+            # ===== VISUAL: SEARCH PATH ON THE HNSW GRAPH =====
+            st.subheader("🗺️ Visual: Search Path Through the Layers")
+            retrieved_indices = []
+            for doc in retrieved_docs:
+                for i, s in enumerate(splits):
+                    if s.page_content == doc.page_content:
+                        retrieved_indices.append(i)
+                        break
+            fig = render_hnsw_diagram(
+                len(splits),
+                highlight_indices=retrieved_indices,
+                title="🔍 Query enters at the star → travels down → red = your top matches"
+            )
+            st.pyplot(fig)
+            plt.close(fig)
+
+            # ===== READING THIS SPECIFIC SEARCH =====
+            st.subheader("📖 Reading This Graph")
+            st.markdown(f"""
+            For your question **"{query_input}"**:
+
+            1. It was converted into a 384-number vector, same as every chunk.
+            2. Search started at the ⭐ **entry point** (top layer) and walked down through the dashed connections, layer by layer.
+            3. In Layer 0, it followed neighbor links until it found the chunks whose vectors sit closest to your question's vector.
+            4. Those chunks are marked 🔴 **red** on the graph above — they're the exact {len(retrieved_indices)} chunks the LLM was given to answer you.
+
+            Nothing outside the red nodes was used to generate your answer below.
+            """)
+
             # ===== RESULTS WITH SIMILARITY SCORES =====
             st.subheader("📌 Your 3 Most Relevant Cards (Ranked by Similarity)")
             st.info("💡 **Similarity Score = How close is this card's meaning to your question?** (0-100%)")
