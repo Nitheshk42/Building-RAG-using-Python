@@ -18,6 +18,7 @@ sentence-transformers
 
 # Vector Store
 chromadb
+pysqlite3-binary
 
 # PDF Handling
 pypdf
