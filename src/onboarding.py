@@ -48,9 +48,11 @@ def display_onboarding():
     st.divider()
 
     st.subheader("1️⃣ Upload your resume (PDF or Word)")
-    uploaded_files = st.file_uploader(
-        "Choose file(s)", type=["pdf", "docx", "doc"], accept_multiple_files=True
+    st.caption("One file only — keeps answers grounded in a single, consistent resume.")
+    uploaded_file = st.file_uploader(
+        "Choose a file", type=["pdf", "docx", "doc"], accept_multiple_files=False
     )
+    uploaded_files = [uploaded_file] if uploaded_file else []
 
     st.subheader("2️⃣ What level are you interviewing for?")
     level = st.radio("Target level:", LEVELS, horizontal=True)

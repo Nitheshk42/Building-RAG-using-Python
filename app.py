@@ -60,11 +60,12 @@ with st.sidebar:
     st.caption(f"Level: {profile.get('level', 'Not set')}")
 
     with st.expander("📄 Upload a different resume"):
-        new_files = st.file_uploader(
-            "Choose file(s)", type=["pdf", "docx", "doc"], accept_multiple_files=True, key="resume_reupload"
+        st.caption("One file only.")
+        new_file = st.file_uploader(
+            "Choose a file", type=["pdf", "docx", "doc"], accept_multiple_files=False, key="resume_reupload"
         )
-        if new_files and st.button("Use this resume", use_container_width=True):
-            st.session_state.pending_new_resume = new_files
+        if new_file and st.button("Use this resume", use_container_width=True):
+            st.session_state.pending_new_resume = [new_file]
             st.rerun()
 
     if st.button("🚪 Logout", use_container_width=True):

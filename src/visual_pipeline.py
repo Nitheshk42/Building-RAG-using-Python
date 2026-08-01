@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
@@ -78,18 +79,22 @@ def display_visual_pipeline():
 
     # Sidebar Upload
     with st.sidebar:
-        st.header("📤 Upload Documents")
-        uploaded_files = st.file_uploader("Choose PDF or Word files", type=["pdf", "docx", "doc"], accept_multiple_files=True)
+        st.header("📤 Upload Document")
+        st.caption("One file only — keeps this demo grounded in a single resume.")
+        uploaded_file = st.file_uploader("Choose a PDF or Word file", type=["pdf", "docx", "doc"], accept_multiple_files=False)
+        uploaded_files = [uploaded_file] if uploaded_file else []
 
         if uploaded_files:
-            st.success(f"✅ {len(uploaded_files)} file(s) selected")
-            if st.button("💾 Save Files to Data Folder"):
+            st.success(f"✅ {uploaded_file.name} selected")
+            if st.button("💾 Save File to Data Folder"):
+                if os.path.exists(data_dir):
+                    shutil.rmtree(data_dir)  # replace, don't accumulate
                 os.makedirs(data_dir, exist_ok=True)
-                for uploaded_file in uploaded_files:
-                    file_path = os.path.join(data_dir, uploaded_file.name)
+                for uf in uploaded_files:
+                    file_path = os.path.join(data_dir, uf.name)
                     with open(file_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-                st.success("✅ All files saved!")
+                        f.write(uf.getbuffer())
+                st.success("✅ File saved!")
 
     # Stage Selection
     stage = st.radio("Go to stage:", [
