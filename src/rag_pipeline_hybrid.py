@@ -53,9 +53,15 @@ Reason: <one short sentence>"""
 
 def get_resume_chain(vectorstore):
     """Answers strictly from retrieved resume chunks. No elaboration beyond them."""
-    llm = _get_llm(temperature=0.2)
+    llm = _get_llm(temperature=0.2, max_tokens=2000)
     template = """You are answering ONLY using the resume context below. Do not add
-outside knowledge or speculation. If the context doesn't cover it, say so plainly.
+outside knowledge or speculation.
+
+If the question asks about MULTIPLE distinct items (e.g. "top 10 X", "each of Y"),
+go through EVERY item the question lists and state for each one, briefly, whether the
+resume context covers it and what it says if so.
+
+If the resume context doesn't cover something, say so plainly rather than skipping it.
 
 RESUME CONTEXT:
 {context}
@@ -64,7 +70,7 @@ QUESTION: {question}
 
 Answer strictly from the resume context:"""
     prompt = ChatPromptTemplate.from_template(template)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
 
     chain = (
         {
@@ -209,26 +215,45 @@ Begin now:"""
 
 
 def get_technical_chain(vectorstore):
-    """Resume-aware but expands like an interview follow-up: approach, challenges, resolution."""
-    llm = _get_llm(temperature=0.5)
-    template = """You are helping prepare for a technical interview. Use the resume context
-as the factual basis, then go deeper as if answering an interviewer's follow-up "walk me
-through how you did that." Cover:
-1. The approach/how it was likely implemented
-2. Realistic challenges someone would face doing this
-3. How those challenges would typically be resolved
+    """Resume-aware but expands like an interview follow-up: approach, challenges, resolution.
+    Must be honest about what the resume actually evidences vs. general knowledge -
+    never invent first-person "I did X" claims the resume doesn't support. Must expand
+    into one block per item when the question asks about multiple items (e.g. "top 10")."""
+    llm = _get_llm(temperature=0.3, max_tokens=3000)
+    template = """You are helping prepare for a technical interview follow-up: "walk me through
+how you did that."
 
-You may use general technical knowledge to fill in reasonable depth beyond the resume,
-but stay consistent with what the resume says.
+CRITICAL HONESTY RULE: Only say "I did X" / "In my role I..." if the RESUME CONTEXT below
+actually contains evidence of it. Never invent a specific first-person story, project, or
+outcome that isn't in the context. If the resume does NOT clearly cover an item, say so
+plainly and instead explain how you WOULD approach it in general — do not disguise general
+knowledge as personal history.
+
+MULTI-ITEM RULE: If the question asks about several distinct items (e.g. "top 10 OWASP risks",
+"each of these concepts"), you MUST cover EVERY item listed, one at a time, each as its own
+labeled block below — do not collapse them into a single generic answer.
+
+For EACH item, use this exact format:
+
+### <item name/number>
+**Your resume evidence:** what the resume actually shows for this item, OR "Not directly
+evidenced in resume — general approach:" if it isn't there
+**Approach/Tools:** specific tools/technologies (from resume if present, else typical ones,
+clearly marked as general knowledge)
+**Challenges & Resolution:** 1-2 sentences; only claim personal experience if evidenced,
+otherwise phrase as "a common challenge here would be..."
+
+Keep each field to 1-2 sentences. Be specific and vary the wording across items — do not reuse
+the same sentence template for every item.
 
 RESUME CONTEXT:
 {context}
 
 QUESTION: {question}
 
-Interview-style deep-dive answer:"""
+Answer (cover every item asked about):"""
     prompt = ChatPromptTemplate.from_template(template)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
 
     chain = (
         {

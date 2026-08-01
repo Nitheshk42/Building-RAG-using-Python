@@ -33,7 +33,7 @@ def display_chat_interface():
 
             with st.chat_message("assistant"):
                 with st.spinner("🔍 Processing..."):
-                    vectorstore = st.session_state.get("vectorstore") or get_vectorstore()
+                    vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
 
                     if not vectorstore:
                         st.warning("⚠️ Please go to Visual tab and process documents first.")

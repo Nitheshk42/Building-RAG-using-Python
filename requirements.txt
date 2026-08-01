@@ -1,6 +1,7 @@
 # Core
 streamlit
 python-dotenv
+bcrypt
 
 # LangChain Core
 langchain
@@ -15,6 +16,9 @@ chromadb
 
 # PDF Handling
 pypdf
+
+# Word Handling
+docx2txt
 
 # LLM (for Day 2)
 langchain-groq

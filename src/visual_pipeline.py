@@ -73,20 +73,23 @@ def display_visual_pipeline():
     st.title("📚 Visual RAG Pipeline - How It Actually Works")
     st.write("🎯 Watch how documents become searchable magic ✨")
 
+    username = st.session_state.get("auth_user", "default")
+    data_dir = os.path.join("data", username.replace("/", "_").replace("\\", "_"))
+
     # Sidebar Upload
     with st.sidebar:
         st.header("📤 Upload Documents")
-        uploaded_files = st.file_uploader("Choose PDF files", type="pdf", accept_multiple_files=True)
-        
+        uploaded_files = st.file_uploader("Choose PDF or Word files", type=["pdf", "docx", "doc"], accept_multiple_files=True)
+
         if uploaded_files:
             st.success(f"✅ {len(uploaded_files)} file(s) selected")
             if st.button("💾 Save Files to Data Folder"):
-                os.makedirs("data", exist_ok=True)
+                os.makedirs(data_dir, exist_ok=True)
                 for uploaded_file in uploaded_files:
-                    file_path = os.path.join("data", uploaded_file.name)
+                    file_path = os.path.join(data_dir, uploaded_file.name)
                     with open(file_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
-                st.success("✅ All files saved to `data/` folder!")
+                st.success("✅ All files saved!")
 
     # Stage Selection
     stage = st.radio("Go to stage:", [
@@ -105,17 +108,17 @@ def display_visual_pipeline():
         col1, col2 = st.columns([2, 1])
         with col1:
             with st.expander("📖 See sample document"):
-                if os.path.exists("data") and os.listdir("data"):
-                    docs = load_documents()
+                if os.path.exists(data_dir) and os.listdir(data_dir):
+                    docs = load_documents(data_dir)
                     if docs:
                         st.write(docs[0].page_content[:500])
-        
+
         with col2:
             if st.button("✂️ Chunk Document", use_container_width=True):
-                if not os.path.exists("data") or len(os.listdir("data")) == 0:
-                    st.error("❌ No PDFs in data/ folder")
+                if not os.path.exists(data_dir) or len(os.listdir(data_dir)) == 0:
+                    st.error("❌ No files uploaded yet")
                 else:
-                    documents = load_documents()
+                    documents = load_documents(data_dir)
                     splits = split_documents(documents)
                     st.session_state.splits = splits
                     st.session_state.documents = documents
@@ -223,7 +226,7 @@ def display_visual_pipeline():
                 splits = st.session_state.splits
                 embeddings_model = get_embeddings()
                 
-                vectorstore = create_vector_store(splits, embeddings_model)
+                vectorstore = create_vector_store(splits, embeddings_model, username=username)
                 st.session_state.vectorstore = vectorstore
                 st.session_state.embeddings_model = embeddings_model
                 

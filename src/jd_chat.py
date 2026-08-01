@@ -50,7 +50,7 @@ def display_jd_prep():
             st.error("❌ Pick at least one question type.")
             return
 
-        vectorstore = st.session_state.get("vectorstore") or get_vectorstore()
+        vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
         if not vectorstore:
             st.warning("⚠️ Please go to Visual tab and process documents first.")
             return
@@ -84,7 +84,7 @@ def display_jd_prep():
 
         st.divider()
         if st.button("➕ More questions", use_container_width=True):
-            vectorstore = st.session_state.get("vectorstore") or get_vectorstore()
+            vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
             if not vectorstore:
                 st.warning("⚠️ Please go to Visual tab and process documents first.")
                 return

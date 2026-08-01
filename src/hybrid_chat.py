@@ -38,7 +38,7 @@ def display_hybrid_chat():
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        vectorstore = st.session_state.get("vectorstore") or get_vectorstore()
+        vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
         if not vectorstore:
             st.warning("⚠️ Please go to Visual tab and process documents first.")
             return
