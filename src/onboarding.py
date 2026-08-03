@@ -7,7 +7,7 @@ from src.embeddings import get_embeddings
 from src.vector_store import create_vector_store
 from src.auth import set_profile_level, mark_resume_uploaded
 
-LEVELS = ["Junior", "Mid-Level", "Senior", "Architecture"]
+LEVELS = ["Junior", "Mid-Level", "Senior", "Architect"]
 
 
 def user_data_dir(username):

@@ -25,6 +25,7 @@ pypdf
 
 # Word Handling
 docx2txt
+python-docx
 
 # LLM (for Day 2)
 langchain-groq

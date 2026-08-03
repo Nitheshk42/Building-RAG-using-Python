@@ -2,13 +2,13 @@ import streamlit as st
 from src.rag_pipeline_hybrid import get_level_chain
 from src.vector_store import get_vectorstore
 
-LEVEL_ORDER = ["Junior", "Mid-Level", "Senior", "Architecture"]
+LEVEL_ORDER = ["Junior", "Mid-Level", "Senior", "Architect"]
 
 LEVEL_META = {
     "Junior":       {"emoji": "🌱", "color": "#4CAF50", "desc": "Simple, foundational"},
     "Mid-Level":    {"emoji": "⚙️", "color": "#2196F3", "desc": "Concrete detail & decisions"},
     "Senior":       {"emoji": "🎯", "color": "#FF9800", "desc": "Tradeoffs & depth"},
-    "Architecture": {"emoji": "🏛️", "color": "#9C27B0", "desc": "System-level design"},
+    "Architect": {"emoji": "🏛️", "color": "#9C27B0", "desc": "System-level design"},
 }
 
 
@@ -29,7 +29,7 @@ def _level_card(name, answer):
 
 def _default_pair(user_level):
     """Junior -> [Junior, Mid-Level], Mid-Level -> [Mid-Level, Senior],
-    Senior -> [Senior, Architecture], Architecture -> [Architecture]."""
+    Senior -> [Senior, Architect], Architect -> [Architect]."""
     if user_level not in LEVEL_ORDER:
         return LEVEL_ORDER[:2]
     idx = LEVEL_ORDER.index(user_level)
@@ -54,7 +54,7 @@ def display_level_chat():
         "Levels to show:",
         options=LEVEL_ORDER,
         default=default_selection,
-        help="Pick any combination — e.g. select Senior + Architecture to preview those answers."
+        help="Pick any combination — e.g. select Senior + Architect to preview those answers."
     )
 
     if "level_messages" not in st.session_state:

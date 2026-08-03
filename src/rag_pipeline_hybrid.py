@@ -57,6 +57,10 @@ def get_resume_chain(vectorstore):
     template = """You are answering ONLY using the resume context below. Do not add
 outside knowledge or speculation.
 
+SPECIFICITY RULE: If the resume context contains concrete numbers, metrics, config values,
+tool versions, or specific project/technology names, quote them verbatim rather than
+paraphrasing them away into generic statements.
+
 If the question asks about MULTIPLE distinct items (e.g. "top 10 X", "each of Y"),
 go through EVERY item the question lists and state for each one, briefly, whether the
 resume context covers it and what it says if so.
@@ -97,7 +101,7 @@ LEVEL_INSTRUCTIONS = {
         "Answer as a SENIOR engineer would in an interview: go into technical tradeoffs, "
         "why alternatives were rejected, edge cases, and how you'd mentor others on this."
     ),
-    "Architecture": (
+    "Architect": (
         "Answer as a SOLUTIONS ARCHITECT would in an interview: focus on system-level design, "
         "scalability, reliability, cross-team/cross-service concerns, and long-term tradeoffs."
     ),
@@ -106,9 +110,13 @@ LEVEL_INSTRUCTIONS = {
 
 def get_level_chain(vectorstore, level):
     """Answers the same question calibrated to a specific seniority level."""
-    llm = _get_llm(temperature=0.5)
+    llm = _get_llm(temperature=0.5, max_tokens=1500)
     instruction = LEVEL_INSTRUCTIONS.get(level, LEVEL_INSTRUCTIONS["Mid-Level"])
     template = """You are helping prepare interview answers based on a resume.
+
+SPECIFICITY RULE: If the resume context contains concrete numbers, metrics, config values,
+or tool versions, quote them verbatim rather than paraphrasing into generic statements —
+concrete detail is what makes an answer credible in an interview.
 
 RESUME CONTEXT:
 {context}
@@ -117,11 +125,12 @@ QUESTION: {question}
 
 """ + instruction + """
 
-Keep the answer focused and interview-ready (not a generic essay).
+Keep the answer focused and interview-ready (not a generic essay), but don't sacrifice
+concrete detail for brevity.
 
 Answer:"""
     prompt = ChatPromptTemplate.from_template(template)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
 
     chain = (
         {
@@ -233,18 +242,28 @@ MULTI-ITEM RULE: If the question asks about several distinct items (e.g. "top 10
 "each of these concepts"), you MUST cover EVERY item listed, one at a time, each as its own
 labeled block below — do not collapse them into a single generic answer.
 
+SPECIFICITY RULE: When the resume context contains concrete details — exact numbers, metrics,
+config values, tool versions, thread/pool sizes, throughput figures, timeframes, specific
+class/service/project names — you MUST carry them into the answer VERBATIM. Do not smooth a
+specific number into a vague phrase like "improved performance." If the resume says "tuned
+thread pool size to 10" or "5000 records every 30 seconds," the answer must say that exact
+number, not "optimized the configuration."
+
 For EACH item, use this exact format:
 
 ### <item name/number>
-**Your resume evidence:** what the resume actually shows for this item, OR "Not directly
-evidenced in resume — general approach:" if it isn't there
-**Approach/Tools:** specific tools/technologies (from resume if present, else typical ones,
-clearly marked as general knowledge)
-**Challenges & Resolution:** 1-2 sentences; only claim personal experience if evidenced,
-otherwise phrase as "a common challenge here would be..."
+**Your resume evidence:** what the resume actually shows for this item, quoting concrete
+specifics verbatim where present, OR "Not directly evidenced in resume — general approach:"
+if it isn't there
+**Approach/Tools:** specific tools/technologies/config values (from resume if present, else
+typical ones, clearly marked as general knowledge)
+**Challenges & Resolution:** the specific failure mode and specific fix if evidenced (e.g. a
+concrete bottleneck and the concrete change that resolved it), otherwise phrase as "a common
+challenge here would be..."
 
-Keep each field to 1-2 sentences. Be specific and vary the wording across items — do not reuse
-the same sentence template for every item.
+If this is a SINGLE-item question (not a "top N" list), you may expand each field to 3-5
+sentences of concrete, narrative detail instead of 1-2 — depth matters more than brevity here.
+Be specific and vary the wording across items — do not reuse the same sentence template.
 
 RESUME CONTEXT:
 {context}

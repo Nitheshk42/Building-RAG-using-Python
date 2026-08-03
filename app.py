@@ -8,11 +8,28 @@ from src.chat import display_chat_interface
 from src.hybrid_chat import display_hybrid_chat
 from src.level_chat import display_level_chat
 from src.jd_chat import display_jd_prep
+from src.resume_tailor_ui import display_resume_tailor
 from src.auth_ui import display_auth
 from src.onboarding import display_onboarding, process_resume
 from src.auth import get_profile
 
 st.set_page_config(page_title="StudySage", page_icon="📚", layout="wide")
+
+# Google Fonts (Roboto + Google Sans Text fallback) applied app-wide
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
+html, body, [class*="css"], .stMarkdown, .stButton button, .stTextInput input,
+.stTextArea textarea, .stSelectbox, .stRadio, .stTabs, h1, h2, h3, h4, h5, h6, p, span, div {
+    font-family: 'Roboto', 'Segoe UI', sans-serif !important;
+}
+h1, h2, h3 {
+    font-weight: 500 !important;
+    letter-spacing: -0.3px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 if "auth_user" not in st.session_state:
     st.session_state.auth_user = None
@@ -80,12 +97,13 @@ with st.sidebar:
 if "pending_new_resume" in st.session_state:
     _confirm_reprocess_dialog()
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📖 Visual RAG Learning",
     "💬 Chat Assistant",
     "🔀 Hybrid Chat",
     "🪜 Level Answers",
-    "📋 JD Answers"
+    "📋 JD Answers",
+    "🎯 Resume Tailor"
 ])
 
 with tab1:
@@ -104,3 +122,6 @@ with tab4:
 
 with tab5:
     display_jd_prep()
+
+with tab6:
+    display_resume_tailor()
