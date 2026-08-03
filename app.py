@@ -15,18 +15,30 @@ from src.auth import get_profile
 
 st.set_page_config(page_title="StudySage", page_icon="📚", layout="wide")
 
-# Google Fonts (Roboto + Google Sans Text fallback) applied app-wide
+# Google Sans Text (the actual font used on developers.google.com) + Roboto fallback,
+# applied app-wide without breaking Streamlit's icon font
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Text&family=Roboto:wght@300;400;500;700&display=swap');
 
-html, body, [class*="css"], .stMarkdown, .stButton button, .stTextInput input,
-.stTextArea textarea, .stSelectbox, .stRadio, .stTabs, h1, h2, h3, h4, h5, h6, p, span, div {
-    font-family: 'Roboto', 'Segoe UI', sans-serif !important;
+html, body,
+[data-testid="stAppViewContainer"], [data-testid="stSidebar"], [data-testid="stHeader"],
+[data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li, [data-testid="stMarkdownContainer"] span,
+.stButton button, .stTextInput input, .stTextArea textarea, .stSelectbox,
+.stRadio label, .stTabs, .stCaption, .stAlert,
+h1, h2, h3, h4, h5, h6, p, li, label {
+    font-family: 'Google Sans Text', 'Roboto', 'Segoe UI', sans-serif !important;
 }
+
 h1, h2, h3 {
     font-weight: 500 !important;
     letter-spacing: -0.3px;
+}
+
+/* Keep Streamlit's icon font working (upload icon, chevrons, etc.) - do not override these */
+[data-testid="stIconMaterial"], .material-symbols-rounded, .material-icons, span[class*="material-symbols"] {
+    font-family: 'Material Symbols Rounded' !important;
 }
 </style>
 """, unsafe_allow_html=True)
