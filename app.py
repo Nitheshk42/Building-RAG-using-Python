@@ -1,6 +1,13 @@
-__import__("pysqlite3")
 import sys
-sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+try:
+    # Cloud (Linux) environments often ship an sqlite3 too old for chromadb's rust
+    # bindings - swap in pysqlite3-binary if it's installed. On macOS/local dev this
+    # package usually isn't installed (or won't build), so just skip it silently -
+    # local sqlite3 is normally recent enough already.
+    __import__("pysqlite3")
+    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+except ImportError:
+    pass
 
 # Compatibility shim: chromadb 0.4.24 still references numpy aliases that were removed
 # in numpy 2.0 (np.float_, etc). If a numpy 2.x install slips through despite the
