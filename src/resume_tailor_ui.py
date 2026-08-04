@@ -1,5 +1,5 @@
 import streamlit as st
-from src.resume_tailor import analyze_resume_for_jd, render_word_diff, build_tailored_docx
+from src.resume_tailor import analyze_resume_for_jd, render_side_by_side_diff, build_tailored_docx
 
 
 def display_resume_tailor():
@@ -92,18 +92,17 @@ def display_resume_tailor():
             final_snippet += "\n" + approved_metric_text
         final_snippets.append(final_snippet)
 
-        st.caption("Diff view — red/strikethrough = removed, green = added (updates live as you check boxes above):")
-        with st.container(border=True):
-            st.markdown(render_word_diff(proj["original"], final_snippet), unsafe_allow_html=True)
-
-        with st.expander("📄 Before / After (plain text)"):
-            col_before, col_after = st.columns(2)
-            with col_before:
-                st.markdown("**Before:**")
-                st.text(proj["original"])
-            with col_after:
-                st.markdown("**After:**")
-                st.text(final_snippet)
+        st.caption("Side-by-side diff — red/strikethrough = removed, green = added (updates live as you check boxes above):")
+        left_html, right_html = render_side_by_side_diff(proj["original"], final_snippet)
+        col_before, col_after = st.columns(2, gap="medium")
+        with col_before:
+            st.markdown("**Before**")
+            with st.container(border=True):
+                st.markdown(left_html, unsafe_allow_html=True)
+        with col_after:
+            st.markdown("**After**")
+            with st.container(border=True):
+                st.markdown(right_html, unsafe_allow_html=True)
 
         st.divider()
 

@@ -46,9 +46,12 @@ appear). For EACH of the two, produce FOUR separate things:
 2. EDITED: a reworded/reordered version that ONLY emphasizes what is ALREADY TRUE in the
    original text, to surface keywords matching the JD. Do NOT add any tool, claim, or number
    that isn't already in the ORIGINAL text. No invented metrics here.
-3. SUGGESTIONS: 2-4 bullet points of additional TRUE-SOUNDING points plausible from context and
-   the JD's needs, phrased as something to verify before including — never claim a tool/platform
-   the candidate has no evidence of using.
+3. SUGGESTIONS: 2-4 bullet points, each written as an ACTUAL RESUME BULLET ready to insert
+   as-is — first-person achievement style, starting with an action verb (e.g. "Collaborated
+   with analytics and ML teams to define curated dataset requirements, reducing rework on
+   downstream reports"). Do NOT write meta/coaching language like "Consider highlighting..." or
+   "You may want to mention..." — write the bullet itself, plausible from context and the JD's
+   needs, but never claiming a tool/platform the candidate has no evidence of using.
 4. METRIC_RECOMMENDATIONS: 1-3 bullet points, each a full illustrative bullet point with a
    PLAUSIBLE ESTIMATED RANGE for a quantitative metric this project is missing — e.g. "Reduced
    processing time by 25-30% through this optimization" or "Handled roughly 5,000-10,000
@@ -121,31 +124,36 @@ def _parse_projects(raw):
     return projects
 
 
-def render_word_diff(original, edited):
-    """GitHub-style inline word diff: red strikethrough for removed, green for added."""
+def render_side_by_side_diff(original, edited):
+    """GitHub PR-style split diff: returns (left_html, right_html). Left is the original with
+    removed words struck through in red; right is the edited version with added words
+    highlighted in green. Unchanged words render plainly on both sides."""
     orig_words = original.split()
     edit_words = edited.split()
     sm = difflib.SequenceMatcher(None, orig_words, edit_words)
-    html_parts = []
+
+    left_parts, right_parts = [], []
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag == "equal":
-            html_parts.append(" ".join(orig_words[i1:i2]))
+            left_parts.append(" ".join(orig_words[i1:i2]))
+            right_parts.append(" ".join(edit_words[j1:j2]))
         elif tag == "delete":
-            html_parts.append(
+            left_parts.append(
                 f'<span style="background:#4a1414;color:#ff8a8a;text-decoration:line-through;padding:1px 3px;border-radius:3px;">{" ".join(orig_words[i1:i2])}</span>'
             )
         elif tag == "insert":
-            html_parts.append(
+            right_parts.append(
                 f'<span style="background:#143d1d;color:#8affa0;padding:1px 3px;border-radius:3px;">{" ".join(edit_words[j1:j2])}</span>'
             )
         elif tag == "replace":
-            html_parts.append(
+            left_parts.append(
                 f'<span style="background:#4a1414;color:#ff8a8a;text-decoration:line-through;padding:1px 3px;border-radius:3px;">{" ".join(orig_words[i1:i2])}</span>'
             )
-            html_parts.append(
+            right_parts.append(
                 f'<span style="background:#143d1d;color:#8affa0;padding:1px 3px;border-radius:3px;">{" ".join(edit_words[j1:j2])}</span>'
             )
-    return " ".join(html_parts)
+
+    return " ".join(left_parts), " ".join(right_parts)
 
 
 def build_tailored_docx(full_resume_text, replacements):
