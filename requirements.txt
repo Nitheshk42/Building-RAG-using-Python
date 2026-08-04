@@ -17,7 +17,12 @@ langchain-huggingface
 sentence-transformers
 
 # Vector Store
-chromadb
+# Pinned to a pre-Rust-binding release: newer chromadb (0.5+) added a multi-tenant
+# "admin database" layer (chromadb.Client -> _validate_tenant_database -> get_tenant)
+# backed by Rust bindings that are unreliable on very new Python versions like 3.14 -
+# exactly the failure this project kept hitting. 0.4.24 uses the older, simpler local
+# persistence path and never invokes that tenant-validation code at all.
+chromadb==0.4.24
 pysqlite3-binary
 
 # PDF Handling
