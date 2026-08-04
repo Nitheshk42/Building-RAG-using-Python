@@ -13,6 +13,11 @@ langchain-core
 langchain-text-splitters
 langchain-huggingface
 
+# Pinned: langchain-core -> langsmith pulls zstandard, and the resolver was landing on
+# 0.23.0 which has no prebuilt wheel for Python 3.14 (forces a source build that fails
+# on Streamlit Cloud due to missing libffi headers). 0.24.0+ ships real cp314 wheels.
+zstandard>=0.24.0
+
 # Embeddings
 sentence-transformers
 
