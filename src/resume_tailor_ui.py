@@ -5,10 +5,9 @@ from src.resume_tailor import analyze_resume_for_jd, render_side_by_side_diff, b
 def display_resume_tailor():
     st.title("🎯 Resume Tailor")
     st.markdown(
-        "Paste a job description — this tailors your **first two projects** to match it. "
-        "Rephrasing only uses what's already true in your resume. Anything inferred beyond "
-        "that, any missing skill, and any suggested metric is shown separately — you decide "
-        "what goes in, and the diff below updates live as you check things on."
+        "Paste a job description — for your **first two projects**, this suggests new points "
+        "you could add to match it. **Nothing changes until you check a box** — your existing "
+        "resume text is never rewritten or touched, only added to if you approve it."
     )
     st.divider()
 
@@ -20,7 +19,7 @@ def display_resume_tailor():
     full_resume_text = "\n".join(doc.page_content for doc in documents)
     jd_text = st.text_area("Paste the job description here:", height=180, placeholder="Paste JD text...")
 
-    if st.button("🎯 Analyze & Tailor", use_container_width=True):
+    if st.button("🎯 Analyze & Suggest", use_container_width=True):
         if not jd_text.strip():
             st.error("❌ Please paste a job description first.")
             return
@@ -32,13 +31,13 @@ def display_resume_tailor():
         st.session_state.tailor_projects = projects
         st.session_state.tailor_full_text = full_resume_text
         st.session_state.tailor_approved = [set() for _ in projects]
-        st.session_state.tailor_approved_metrics = [set() for _ in projects]
+        st.session_state.tailor_approved_skills = [set() for _ in projects]
 
     if "tailor_projects" not in st.session_state:
         return
 
     projects = st.session_state.tailor_projects
-    st.success(f"✅ Found {len(projects)} project(s) to tailor")
+    st.success(f"✅ Found {len(projects)} project(s)")
 
     final_snippets = []
 
@@ -46,53 +45,55 @@ def display_resume_tailor():
         st.subheader(f"📁 Project {idx + 1}")
 
         if proj["suggestions"]:
-            st.markdown("**⚠️ Suggested additions — verify each is actually true before including:**")
+            st.markdown("**💡 Suggested points to add — check any that are actually true:**")
             for s_idx, suggestion in enumerate(proj["suggestions"]):
                 checked = st.checkbox(suggestion, key=f"suggestion_{idx}_{s_idx}")
                 if checked:
                     st.session_state.tailor_approved[idx].add(s_idx)
                 else:
                     st.session_state.tailor_approved[idx].discard(s_idx)
+        else:
+            st.caption("No suggestions generated for this project.")
 
-        if proj.get("metric_recommendations"):
-            st.markdown("**📊 Quantitative metric recommendations:**")
-            st.caption(
-                "These are illustrative estimated ranges, not your real numbers — we don't know "
-                "your actual results. Include one **at your own risk**, and only if it's roughly "
-                "accurate or you replace it with your real figure. Never present an unverified "
-                "estimate as fact to a recruiter."
-            )
-            for m_idx, metric in enumerate(proj["metric_recommendations"]):
-                checked = st.checkbox(f"📊 {metric}", key=f"metric_{idx}_{m_idx}")
-                if checked:
-                    st.session_state.tailor_approved_metrics[idx].add(m_idx)
-                else:
-                    st.session_state.tailor_approved_metrics[idx].discard(m_idx)
+        if proj.get("has_any_metric"):
+            st.caption("📊 One or more suggestions above include an illustrative estimated metric — verify it's roughly accurate before including, or edit it to your real number.")
+        else:
+            st.caption("📊 No quantitative metric applicable for this project's suggestions.")
 
         if proj.get("missing_skills"):
             st.markdown("**🚧 Skills this JD wants that aren't on your resume:**")
-            st.caption("Informational only — these are never added to your resume automatically.")
-            for skill_note in proj["missing_skills"]:
-                st.warning(skill_note, icon="🚧")
+            st.caption(
+                "These are real gaps — not something to fake. Where a plausible, honest tie-in "
+                "to your actual work exists, we draft a bullet for it below; check it in only "
+                "**at your own risk**, and only if it's genuinely true."
+            )
+            for sk_idx, item in enumerate(proj["missing_skills"]):
+                st.warning(f"**{item['skill']}** — {item['note']}", icon="🚧")
+                if "no plausible tie-in" not in item["draft"].lower():
+                    checked = st.checkbox(f"💡 {item['draft']}", key=f"skill_{idx}_{sk_idx}")
+                    if checked:
+                        st.session_state.tailor_approved_skills[idx].add(sk_idx)
+                    else:
+                        st.session_state.tailor_approved_skills[idx].discard(sk_idx)
 
-        # Build the live final text for this project from base edit + approved checkboxes
+        # Nothing changes until the user checks something on - original stays original by default
         approved = st.session_state.tailor_approved[idx]
-        approved_metrics = st.session_state.tailor_approved_metrics[idx]
-        final_snippet = proj["edited"]
+        approved_skills = st.session_state.tailor_approved_skills[idx]
+        final_snippet = proj["original"]
         approved_text = "\n".join(
             proj["suggestions"][i] for i in sorted(approved) if i < len(proj["suggestions"])
         )
-        approved_metric_text = "\n".join(
-            proj["metric_recommendations"][i] for i in sorted(approved_metrics)
-            if i < len(proj["metric_recommendations"])
+        approved_skill_text = "\n".join(
+            proj["missing_skills"][i]["draft"] for i in sorted(approved_skills)
+            if i < len(proj["missing_skills"])
         )
         if approved_text:
             final_snippet += "\n" + approved_text
-        if approved_metric_text:
-            final_snippet += "\n" + approved_metric_text
+        if approved_skill_text:
+            final_snippet += "\n" + approved_skill_text
         final_snippets.append(final_snippet)
 
-        st.caption("Side-by-side diff — red/strikethrough = removed, green = added (updates live as you check boxes above):")
+        st.caption("Side-by-side diff — stays identical until you check a box above, then updates live:")
         left_html, right_html = render_side_by_side_diff(proj["original"], final_snippet)
         col_before, col_after = st.columns(2, gap="medium")
         with col_before:
@@ -105,14 +106,6 @@ def display_resume_tailor():
                 st.markdown(right_html, unsafe_allow_html=True)
 
         st.divider()
-
-    any_metrics_approved = any(st.session_state.tailor_approved_metrics[i] for i in range(len(projects)))
-    if any_metrics_approved:
-        st.warning(
-            "⚠️ You've included estimated metric ranges that aren't your verified real numbers — "
-            "make sure they're accurate (or close enough) before using this resume anywhere.",
-            icon="⚠️"
-        )
 
     if st.button("📥 Generate Tailored Resume (.docx)", use_container_width=True, type="primary"):
         replacements = [
