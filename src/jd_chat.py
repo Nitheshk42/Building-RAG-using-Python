@@ -11,38 +11,50 @@ CATEGORY_STYLE = {
 }
 
 
+def _hero():
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #1a73e8 0%, #6c5ce7 100%);
+                padding: 22px 26px; border-radius: 14px; margin-bottom: 18px;">
+        <div style="font-size: 24px; font-weight: 700; color: white;">📋 JD Answers</div>
+        <div style="font-size: 14px; color: rgba(255,255,255,0.9); margin-top: 4px;">
+            Paste a job description — get the questions you're likely to be asked, matched
+            against your actual resume, with answers ready to go.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def _qa_card(item, index):
     emoji, color = CATEGORY_STYLE.get(item["category"], CATEGORY_STYLE["General"])
-    with st.container(border=True):
-        st.markdown(f"""
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-            <span style="background:{color}; color:white; padding:3px 12px; border-radius:12px;
-                         font-size:12px; font-weight:600;">{emoji} {item['category']}</span>
-            <span style="opacity:0.4; font-size:12px;">#{index}</span>
+    st.markdown(f"""
+    <div style="border-left: 4px solid {color}; border-radius: 10px; padding: 16px 18px;
+                margin-bottom: 12px; background: rgba(255,255,255,0.03);
+                box-shadow: 0 1px 3px rgba(0,0,0,0.25);">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <span style="background:{color}; color:white; padding:2px 10px; border-radius:10px;
+                         font-size:11px; font-weight:700; letter-spacing:0.3px;">{emoji} {item['category'].upper()}</span>
+            <span style="opacity:0.35; font-size:12px;">Q{index}</span>
         </div>
-        """, unsafe_allow_html=True)
-        st.markdown(f"##### {item['question']}")
-        st.markdown(item["answer"])
+        <div style="font-size:16px; font-weight:600; margin-bottom:8px;">{item['question']}</div>
+        <div style="font-size:14.5px; line-height:1.6; opacity:0.92;">{item['answer']}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def display_jd_prep():
     """Paste a JD, get a full set of likely interview questions + resume-grounded answers."""
 
-    st.title("📋 JD Answers")
-    st.markdown(
-        "Paste a job description below — this pulls your most relevant resume experience "
-        "and generates the questions you're likely to be asked, with answers ready to go."
-    )
-    st.divider()
+    _hero()
 
     with st.container(border=True):
+        st.markdown("**Paste the job description**")
         jd_text = st.text_area(
             "Job description",
-            height=180,
+            height=160,
             placeholder="Paste the job description here...",
             label_visibility="collapsed"
         )
-        generate_clicked = st.button("🎯 Generate", use_container_width=True, type="primary")
+        generate_clicked = st.button("🎯 Generate Interview Prep", use_container_width=True, type="primary")
 
     if generate_clicked:
         if not jd_text.strip():
@@ -70,36 +82,36 @@ def display_jd_prep():
         return
 
     items = st.session_state.jd_items
-    st.divider()
-    st.success(f"✅ {len(items)} questions ready — grouped by category below")
+    st.write("")
 
     counts = {}
     for i in items:
         counts[i["category"]] = counts.get(i["category"], 0) + 1
-    cols = st.columns(len(counts) or 1)
-    for col, (cat, count) in zip(cols, counts.items()):
+
+    summary_cols = st.columns(len(counts) + 1)
+    summary_cols[0].metric("✅ Total", len(items))
+    for col, (cat, count) in zip(summary_cols[1:], counts.items()):
         emoji, _ = CATEGORY_STYLE.get(cat, CATEGORY_STYLE["General"])
         col.metric(f"{emoji} {cat}", count)
 
-    st.divider()
+    st.write("")
 
-    for category in CATEGORY_DEFINITIONS.keys():
-        cat_items = [i for i in items if i["category"] == category]
-        if not cat_items:
-            continue
-        emoji, color = CATEGORY_STYLE.get(category, CATEGORY_STYLE["General"])
-        st.markdown(f"### {emoji} {category}")
-        for idx, item in enumerate(cat_items, 1):
-            _qa_card(item, idx)
-        st.write("")
+    present_categories = [c for c in CATEGORY_DEFINITIONS.keys() if any(i["category"] == c for i in items)]
+    category_tabs = st.tabs([f"{CATEGORY_STYLE.get(c, CATEGORY_STYLE['General'])[0]} {c} ({counts[c]})" for c in present_categories])
 
-    st.divider()
-    if st.button("➕ More questions", use_container_width=True):
+    for tab, category in zip(category_tabs, present_categories):
+        with tab:
+            cat_items = [i for i in items if i["category"] == category]
+            for idx, item in enumerate(cat_items, 1):
+                _qa_card(item, idx)
+
+    st.write("")
+    if st.button("➕ 5 more questions", use_container_width=True):
         vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
         if not vectorstore:
             st.warning("⚠️ Please go to Visual tab and process documents first.")
             return
-        with st.spinner("🔍 Generating more questions (no repeats)..."):
+        with st.spinner("🔍 Generating 5 more questions (no repeats)..."):
             existing_questions = [i["question"] for i in st.session_state.jd_items]
             more_items = generate_jd_questions(
                 vectorstore,

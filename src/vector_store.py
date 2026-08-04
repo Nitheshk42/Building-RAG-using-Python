@@ -1,15 +1,16 @@
 import os
 import shutil
+from pathlib import Path
 from langchain_community.vectorstores import Chroma
 from src.embeddings import get_embeddings
 
-CHROMA_DB_ROOT = "chroma_db"
+CHROMA_DB_ROOT = Path(__file__).parent.parent / "chroma_db"
 
 
 def _user_path(username=None):
     """Each user gets an isolated Chroma collection so resumes never mix."""
     safe_name = (username or "default").replace("/", "_").replace("\\", "_")
-    return os.path.join(CHROMA_DB_ROOT, safe_name)
+    return str(CHROMA_DB_ROOT / safe_name)
 
 
 def create_vector_store(docs, embeddings=None, username=None):
@@ -20,6 +21,7 @@ def create_vector_store(docs, embeddings=None, username=None):
     persist_dir = _user_path(username)
     if os.path.exists(persist_dir):
         shutil.rmtree(persist_dir)  # wipe previous resume so old + new never mix
+    os.makedirs(persist_dir, exist_ok=True)  # Chroma needs this to already exist
 
     vectorstore = Chroma.from_documents(
         documents=docs,
