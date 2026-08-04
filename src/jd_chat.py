@@ -42,12 +42,7 @@ def display_jd_prep():
             placeholder="Paste the job description here...",
             label_visibility="collapsed"
         )
-        col_slider, col_btn = st.columns([3, 1])
-        with col_slider:
-            num_questions = st.slider("Number of questions", min_value=4, max_value=15, value=8)
-        with col_btn:
-            st.write("")
-            generate_clicked = st.button("🎯 Generate", use_container_width=True, type="primary")
+        generate_clicked = st.button("🎯 Generate", use_container_width=True, type="primary")
 
     if generate_clicked:
         if not jd_text.strip():
@@ -61,7 +56,7 @@ def display_jd_prep():
 
         with st.spinner("🔍 Matching your resume against this JD and generating questions..."):
             items = generate_jd_questions(
-                vectorstore, jd_text, num_questions, categories=list(CATEGORY_DEFINITIONS.keys())
+                vectorstore, jd_text, num_questions=5, categories=list(CATEGORY_DEFINITIONS.keys())
             )
 
         if not items:

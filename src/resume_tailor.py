@@ -21,10 +21,14 @@ def _get_llm(temperature=0.4, max_tokens=3000):
 
 
 def analyze_resume_for_jd(resume_text, jd_text):
-    """Finds the first two project sections in the resume and, against the JD, produces:
-    - an edited version that only rephrases/emphasizes things that are ALREADY TRUE in the resume
-    - a separate list of suggested additions inferred from context, which are NOT auto-applied -
-      the user must review and approve each one before it goes into the final document."""
+    """Finds the first two project sections in the resume and, against the JD, produces four
+    distinct things per project, kept strictly separate so nothing false gets implied as fact:
+    - EDITED: pure truthful rephrasing of what's already in the resume, no new claims
+    - SUGGESTIONS: plausible additions inferred from context - NOT auto-applied, user must approve
+    - METRIC_RECOMMENDATIONS: placeholder prompts for quantitative numbers (e.g. "reduced X by __%") -
+      never invented numbers, always a fill-in-the-blank the user completes with their real figure
+    - MISSING_SKILLS: JD-required tools/tech NOT evidenced anywhere in the resume - flagged as a
+      learning gap, never phrased as something the candidate already did"""
     llm = _get_llm()
     template = """You are a resume coach. Below is a candidate's RESUME and a JOB DESCRIPTION.
 
@@ -35,17 +39,28 @@ JOB DESCRIPTION:
 {jd_text}
 
 Find the FIRST TWO distinct project/experience entries in the resume (in the order they
-appear). For EACH of the two, produce:
+appear). For EACH of the two, produce FOUR separate things:
 
-1. The ORIGINAL text of that project section, copied VERBATIM from the resume (do not alter
-   wording, so it can be matched back against the original document).
-2. An EDITED version that rewords/reorders/emphasizes ONLY what is already true in the
-   original text, to surface keywords and phrasing that match the JD. Do NOT add any claim,
-   tool, or outcome that isn't already stated in the ORIGINAL text.
-3. SUGGESTIONS: a short bullet list (2-4 items) of additional points that are NOT confirmed by
-   the resume text, but are plausible based on the surrounding context and the JD's needs. Each
-   one must be phrased as a suggestion to verify, not a fact — the user will decide whether to
-   include each one.
+1. ORIGINAL: the verbatim text of that project section, copied exactly from the resume, so it
+   can be matched back against the original document.
+2. EDITED: a reworded/reordered version that ONLY emphasizes what is ALREADY TRUE in the
+   original text, to surface keywords matching the JD. Do NOT add any tool, claim, or number
+   that isn't already in the ORIGINAL text. No invented metrics here.
+3. SUGGESTIONS: 2-4 bullet points of additional TRUE-SOUNDING points plausible from context and
+   the JD's needs, phrased as something to verify before including — never claim a tool/platform
+   the candidate has no evidence of using.
+4. METRIC_RECOMMENDATIONS: 1-3 bullet points, each a full illustrative bullet point with a
+   PLAUSIBLE ESTIMATED RANGE for a quantitative metric this project is missing — e.g. "Reduced
+   processing time by 25-30% through this optimization" or "Handled roughly 5,000-10,000
+   requests/day at peak load." Base the range on what's typical/reasonable for this kind of
+   work, not a wild guess. These are illustrative estimates for the candidate to review, not
+   confirmed facts — the candidate must replace them with their real number if different, or
+   remove them if they don't apply.
+5. MISSING_SKILLS: a bullet list of tools/languages/platforms the JOB DESCRIPTION asks for that
+   are NOT evidenced anywhere in this project (or the whole resume). Phrase each as "You don't
+   appear to have hands-on experience with X per your resume — if you've genuinely used it,
+   add it; otherwise consider this a skill gap to address before applying," never as a claim to
+   insert. If none, write "None found."
 
 Respond in EXACTLY this format, nothing else:
 
@@ -55,7 +70,10 @@ PROJECT1_EDITED:
 <edited text>
 PROJECT1_SUGGESTIONS:
 - <suggestion>
-- <suggestion>
+PROJECT1_METRIC_RECOMMENDATIONS:
+- <illustrative metric bullet with an estimated range>
+PROJECT1_MISSING_SKILLS:
+- <missing skill note, or "None found">
 ===
 PROJECT2_ORIGINAL:
 <verbatim text>
@@ -63,7 +81,10 @@ PROJECT2_EDITED:
 <edited text>
 PROJECT2_SUGGESTIONS:
 - <suggestion>
-- <suggestion>
+PROJECT2_METRIC_RECOMMENDATIONS:
+- <illustrative metric bullet with an estimated range>
+PROJECT2_MISSING_SKILLS:
+- <missing skill note, or "None found">
 
 Begin now:"""
     prompt = ChatPromptTemplate.from_template(template)
@@ -72,27 +93,31 @@ Begin now:"""
     return _parse_projects(result)
 
 
+def _bullets(text):
+    return [line.strip("- ").strip() for line in text.strip().splitlines() if line.strip().startswith("-")]
+
+
 def _parse_projects(raw):
     blocks = raw.split("===")
     projects = []
     pattern = re.compile(
         r"PROJECT\d+_ORIGINAL:\s*(?P<original>.*?)\s*PROJECT\d+_EDITED:\s*(?P<edited>.*?)\s*"
-        r"PROJECT\d+_SUGGESTIONS:\s*(?P<suggestions>.*)",
+        r"PROJECT\d+_SUGGESTIONS:\s*(?P<suggestions>.*?)\s*"
+        r"PROJECT\d+_METRIC_RECOMMENDATIONS:\s*(?P<metrics>.*?)\s*"
+        r"PROJECT\d+_MISSING_SKILLS:\s*(?P<missing>.*)",
         re.DOTALL
     )
     for block in blocks:
         match = pattern.search(block)
         if not match:
             continue
-        original = match.group("original").strip()
-        edited = match.group("edited").strip()
-        suggestions_raw = match.group("suggestions").strip()
-        suggestions = [
-            line.strip("- ").strip()
-            for line in suggestions_raw.splitlines()
-            if line.strip().startswith("-")
-        ]
-        projects.append({"original": original, "edited": edited, "suggestions": suggestions})
+        projects.append({
+            "original": match.group("original").strip(),
+            "edited": match.group("edited").strip(),
+            "suggestions": _bullets(match.group("suggestions")),
+            "metric_recommendations": _bullets(match.group("metrics")),
+            "missing_skills": [s for s in _bullets(match.group("missing")) if s.lower() != "none found"],
+        })
     return projects
 
 

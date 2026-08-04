@@ -7,8 +7,8 @@ def display_resume_tailor():
     st.markdown(
         "Paste a job description — this tailors your **first two projects** to match it. "
         "Rephrasing only uses what's already true in your resume. Anything inferred beyond "
-        "that is shown separately as a **suggestion you must verify and approve** before it "
-        "goes into the download — nothing gets added silently."
+        "that, any missing skill, and any suggested metric is shown separately — you decide "
+        "what goes in, and the diff below updates live as you check things on."
     )
     st.divider()
 
@@ -32,6 +32,7 @@ def display_resume_tailor():
         st.session_state.tailor_projects = projects
         st.session_state.tailor_full_text = full_resume_text
         st.session_state.tailor_approved = [set() for _ in projects]
+        st.session_state.tailor_approved_metrics = [set() for _ in projects]
 
     if "tailor_projects" not in st.session_state:
         return
@@ -39,21 +40,10 @@ def display_resume_tailor():
     projects = st.session_state.tailor_projects
     st.success(f"✅ Found {len(projects)} project(s) to tailor")
 
+    final_snippets = []
+
     for idx, proj in enumerate(projects):
         st.subheader(f"📁 Project {idx + 1}")
-
-        st.caption("Diff view — red/strikethrough = removed, green = added (only rewording of what's already true):")
-        with st.container(border=True):
-            st.markdown(render_word_diff(proj["original"], proj["edited"]), unsafe_allow_html=True)
-
-        with st.expander("📄 Before / After (plain text)"):
-            col_before, col_after = st.columns(2)
-            with col_before:
-                st.markdown("**Before:**")
-                st.text(proj["original"])
-            with col_after:
-                st.markdown("**After:**")
-                st.text(proj["edited"])
 
         if proj["suggestions"]:
             st.markdown("**⚠️ Suggested additions — verify each is actually true before including:**")
@@ -64,20 +54,71 @@ def display_resume_tailor():
                 else:
                     st.session_state.tailor_approved[idx].discard(s_idx)
 
+        if proj.get("metric_recommendations"):
+            st.markdown("**📊 Quantitative metric recommendations:**")
+            st.caption(
+                "These are illustrative estimated ranges, not your real numbers — we don't know "
+                "your actual results. Include one **at your own risk**, and only if it's roughly "
+                "accurate or you replace it with your real figure. Never present an unverified "
+                "estimate as fact to a recruiter."
+            )
+            for m_idx, metric in enumerate(proj["metric_recommendations"]):
+                checked = st.checkbox(f"📊 {metric}", key=f"metric_{idx}_{m_idx}")
+                if checked:
+                    st.session_state.tailor_approved_metrics[idx].add(m_idx)
+                else:
+                    st.session_state.tailor_approved_metrics[idx].discard(m_idx)
+
+        if proj.get("missing_skills"):
+            st.markdown("**🚧 Skills this JD wants that aren't on your resume:**")
+            st.caption("Informational only — these are never added to your resume automatically.")
+            for skill_note in proj["missing_skills"]:
+                st.warning(skill_note, icon="🚧")
+
+        # Build the live final text for this project from base edit + approved checkboxes
+        approved = st.session_state.tailor_approved[idx]
+        approved_metrics = st.session_state.tailor_approved_metrics[idx]
+        final_snippet = proj["edited"]
+        approved_text = "\n".join(
+            proj["suggestions"][i] for i in sorted(approved) if i < len(proj["suggestions"])
+        )
+        approved_metric_text = "\n".join(
+            proj["metric_recommendations"][i] for i in sorted(approved_metrics)
+            if i < len(proj["metric_recommendations"])
+        )
+        if approved_text:
+            final_snippet += "\n" + approved_text
+        if approved_metric_text:
+            final_snippet += "\n" + approved_metric_text
+        final_snippets.append(final_snippet)
+
+        st.caption("Diff view — red/strikethrough = removed, green = added (updates live as you check boxes above):")
+        with st.container(border=True):
+            st.markdown(render_word_diff(proj["original"], final_snippet), unsafe_allow_html=True)
+
+        with st.expander("📄 Before / After (plain text)"):
+            col_before, col_after = st.columns(2)
+            with col_before:
+                st.markdown("**Before:**")
+                st.text(proj["original"])
+            with col_after:
+                st.markdown("**After:**")
+                st.text(final_snippet)
+
         st.divider()
 
-    if st.button("📥 Generate Tailored Resume (.docx)", use_container_width=True, type="primary"):
-        replacements = []
-        for idx, proj in enumerate(projects):
-            approved = st.session_state.tailor_approved[idx]
-            approved_text = "\n".join(
-                proj["suggestions"][i] for i in sorted(approved) if i < len(proj["suggestions"])
-            )
-            final_snippet = proj["edited"]
-            if approved_text:
-                final_snippet += "\n" + approved_text
-            replacements.append((proj["original"], final_snippet))
+    any_metrics_approved = any(st.session_state.tailor_approved_metrics[i] for i in range(len(projects)))
+    if any_metrics_approved:
+        st.warning(
+            "⚠️ You've included estimated metric ranges that aren't your verified real numbers — "
+            "make sure they're accurate (or close enough) before using this resume anywhere.",
+            icon="⚠️"
+        )
 
+    if st.button("📥 Generate Tailored Resume (.docx)", use_container_width=True, type="primary"):
+        replacements = [
+            (proj["original"], final_snippets[idx]) for idx, proj in enumerate(projects)
+        ]
         docx_buffer = build_tailored_docx(st.session_state.tailor_full_text, replacements)
         st.download_button(
             "⬇️ Download Tailored Resume",
