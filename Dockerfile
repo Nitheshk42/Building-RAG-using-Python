@@ -14,12 +14,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Hugging Face Spaces (Docker SDK) expects the app to listen on port 7860
+# Hugging Face Spaces (Docker SDK) expects port 7860; Render/other platforms assign
+# their own port via $PORT. Use $PORT if set, otherwise fall back to 7860.
 EXPOSE 7860
 
-ENV STREAMLIT_SERVER_PORT=7860 \
-    STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
+ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
     STREAMLIT_SERVER_HEADLESS=true \
-    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
+    PORT=7860
 
-CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0"]
+CMD streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0 --server.headless=true
