@@ -33,7 +33,7 @@ def render_hnsw_diagram(n_total, highlight_indices=None, title="HNSW: Multi-Laye
     colors = ['#FFD700', '#4FC3F7', '#66BB6A']
     names = ['Layer 2 (highways)', 'Layer 1 (roads)', 'Layer 0 (all cards)']
 
-    fig, ax = plt.subplots(figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(8, 3.5))
     positions = []
     for size, y, color, name in zip(layer_sizes, layer_y, colors, names):
         xs = np.linspace(0.5, 9.5, size)
@@ -135,7 +135,7 @@ def display_visual_pipeline():
             st.subheader("📊 How Big Are Each Card?")
             splits = st.session_state.splits
             
-            fig, ax = plt.subplots(figsize=(14, 4))
+            fig, ax = plt.subplots(figsize=(9, 3))
             chunk_lengths = [len(s.page_content) for s in splits[:20]]
             colors = ['#667eea' if i % 2 == 0 else '#764ba2' for i in range(len(chunk_lengths))]
             
@@ -202,8 +202,8 @@ def display_visual_pipeline():
             tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(all_emb)-1))
             embeddings_2d = tsne.fit_transform(all_emb)
             
-            fig, ax = plt.subplots(figsize=(12, 6))
-            scatter = ax.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], 
+            fig, ax = plt.subplots(figsize=(8, 4))
+            scatter = ax.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1],
                                 c=range(len(embeddings_2d)), cmap='cool', 
                                 s=200, alpha=0.8, edgecolors='black', linewidth=1)
             ax.set_title("🗺️ Vector Space: Similar Cards Cluster Together", fontweight='bold', fontsize=14)

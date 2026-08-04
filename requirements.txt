@@ -2,7 +2,7 @@
 streamlit
 python-dotenv
 bcrypt
-numpy
+numpy<2.0.0
 matplotlib
 scikit-learn
 
@@ -22,6 +22,8 @@ sentence-transformers
 # backed by Rust bindings that are unreliable on very new Python versions like 3.14 -
 # exactly the failure this project kept hitting. 0.4.24 uses the older, simpler local
 # persistence path and never invokes that tenant-validation code at all.
+# NOTE: chromadb 0.4.24 still uses removed NumPy aliases (np.float_, np.uint) internally,
+# which is why numpy is pinned to <2.0.0 above - NumPy 2.0 deleted those aliases.
 chromadb==0.4.24
 pysqlite3-binary
 
