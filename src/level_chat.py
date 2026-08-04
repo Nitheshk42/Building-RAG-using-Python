@@ -27,35 +27,11 @@ def _level_card(name, answer):
         st.markdown(answer)
 
 
-def _default_pair(user_level):
-    """Junior -> [Junior, Mid-Level], Mid-Level -> [Mid-Level, Senior],
-    Senior -> [Senior, Architect], Architect -> [Architect]."""
-    if user_level not in LEVEL_ORDER:
-        return LEVEL_ORDER[:2]
-    idx = LEVEL_ORDER.index(user_level)
-    if idx + 1 < len(LEVEL_ORDER):
-        return [LEVEL_ORDER[idx], LEVEL_ORDER[idx + 1]]
-    return [LEVEL_ORDER[idx]]
-
-
 def display_level_chat():
-    """One question, answered at the levels relevant to the user (with an override dropdown)."""
+    """One question, answered at all 4 seniority levels side-by-side."""
 
     st.title("🪜 Level Answers")
     st.markdown("See how the **same question** should be answered depending on the seniority you're interviewing for.")
-
-    user_level = st.session_state.get("auth_profile", {}).get("level")
-    default_selection = _default_pair(user_level)
-
-    if user_level:
-        st.caption(f"Your onboarding level: **{user_level}** — showing {' + '.join(default_selection)} by default.")
-
-    selected_levels = st.multiselect(
-        "Levels to show:",
-        options=LEVEL_ORDER,
-        default=default_selection,
-        help="Pick any combination — e.g. select Senior + Architect to preview those answers."
-    )
 
     if "level_messages" not in st.session_state:
         st.session_state.level_messages = []
@@ -63,12 +39,8 @@ def display_level_chat():
     for msg in st.session_state.level_messages:
         st.markdown(f"**{msg['role'].upper()}:** {msg['content']}")
 
-    prompt = st.chat_input("Ask a question to see it answered at your selected levels...")
+    prompt = st.chat_input("Ask a question to see it answered at every level...")
     if not prompt:
-        return
-
-    if not selected_levels:
-        st.error("❌ Select at least one level above.")
         return
 
     vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
@@ -80,9 +52,9 @@ def display_level_chat():
     st.markdown(f"**USER:** {prompt}")
 
     answers = {}
-    for i in range(0, len(selected_levels), 2):
-        row = st.columns(min(2, len(selected_levels) - i), gap="medium")
-        for slot, name in zip(row, selected_levels[i:i + 2]):
+    for i in range(0, len(LEVEL_ORDER), 2):
+        row = st.columns(2, gap="medium")
+        for slot, name in zip(row, LEVEL_ORDER[i:i + 2]):
             with slot:
                 with st.spinner(f"{LEVEL_META[name]['emoji']} Preparing {name} answer..."):
                     chain = get_level_chain(vectorstore, name)

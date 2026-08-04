@@ -11,43 +11,47 @@ CATEGORY_STYLE = {
 }
 
 
-def _qa_card(item):
+def _qa_card(item, index):
     emoji, color = CATEGORY_STYLE.get(item["category"], CATEGORY_STYLE["General"])
     with st.container(border=True):
         st.markdown(f"""
-        <span style="background:{color}; color:white; padding:2px 10px; border-radius:12px;
-                     font-size:12px; font-weight:600;">{emoji} {item['category']}</span>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <span style="background:{color}; color:white; padding:3px 12px; border-radius:12px;
+                         font-size:12px; font-weight:600;">{emoji} {item['category']}</span>
+            <span style="opacity:0.4; font-size:12px;">#{index}</span>
+        </div>
         """, unsafe_allow_html=True)
-        st.markdown(f"**Q: {item['question']}**")
-        st.markdown(f"A: {item['answer']}")
+        st.markdown(f"##### {item['question']}")
+        st.markdown(item["answer"])
 
 
 def display_jd_prep():
     """Paste a JD, get a full set of likely interview questions + resume-grounded answers."""
 
     st.title("📋 JD Answers")
-    st.markdown("Paste a job description — get the questions you're likely to be asked, with resume-backed answers ready to go.")
+    st.markdown(
+        "Paste a job description below — this pulls your most relevant resume experience "
+        "and generates the questions you're likely to be asked, with answers ready to go."
+    )
     st.divider()
 
-    jd_text = st.text_area("Paste the job description here:", height=200, placeholder="Paste JD text...")
-
-    col_a, col_b = st.columns([2, 1])
-    with col_a:
-        selected_categories = st.multiselect(
-            "What type of questions do you want?",
-            options=list(CATEGORY_DEFINITIONS.keys()),
-            default=list(CATEGORY_DEFINITIONS.keys()),
-            help="Resume = questions about your own project/role/responsibilities, answered straight from your resume."
+    with st.container(border=True):
+        jd_text = st.text_area(
+            "Job description",
+            height=180,
+            placeholder="Paste the job description here...",
+            label_visibility="collapsed"
         )
-    with col_b:
-        num_questions = st.slider("How many", min_value=4, max_value=15, value=8)
+        col_slider, col_btn = st.columns([3, 1])
+        with col_slider:
+            num_questions = st.slider("Number of questions", min_value=4, max_value=15, value=8)
+        with col_btn:
+            st.write("")
+            generate_clicked = st.button("🎯 Generate", use_container_width=True, type="primary")
 
-    if st.button("🎯 Generate Interview Prep", use_container_width=True):
+    if generate_clicked:
         if not jd_text.strip():
             st.error("❌ Please paste a job description first.")
-            return
-        if not selected_categories:
-            st.error("❌ Pick at least one question type.")
             return
 
         vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
@@ -56,7 +60,9 @@ def display_jd_prep():
             return
 
         with st.spinner("🔍 Matching your resume against this JD and generating questions..."):
-            items = generate_jd_questions(vectorstore, jd_text, num_questions, categories=selected_categories)
+            items = generate_jd_questions(
+                vectorstore, jd_text, num_questions, categories=list(CATEGORY_DEFINITIONS.keys())
+            )
 
         if not items:
             st.error("❌ Couldn't generate questions — try again.")
@@ -64,38 +70,48 @@ def display_jd_prep():
 
         st.session_state.jd_items = items
         st.session_state.jd_text = jd_text
-        st.session_state.jd_categories = selected_categories
 
-    if "jd_items" in st.session_state:
-        items = st.session_state.jd_items
-        st.success(f"✅ {len(items)} questions ready")
+    if "jd_items" not in st.session_state:
+        return
 
-        counts = {}
-        for i in items:
-            counts[i["category"]] = counts.get(i["category"], 0) + 1
-        cols = st.columns(len(counts) or 1)
-        for col, (cat, count) in zip(cols, counts.items()):
-            emoji, _ = CATEGORY_STYLE.get(cat, CATEGORY_STYLE["General"])
-            col.metric(f"{emoji} {cat}", count)
+    items = st.session_state.jd_items
+    st.divider()
+    st.success(f"✅ {len(items)} questions ready — grouped by category below")
 
-        st.divider()
-        for item in items:
-            _qa_card(item)
+    counts = {}
+    for i in items:
+        counts[i["category"]] = counts.get(i["category"], 0) + 1
+    cols = st.columns(len(counts) or 1)
+    for col, (cat, count) in zip(cols, counts.items()):
+        emoji, _ = CATEGORY_STYLE.get(cat, CATEGORY_STYLE["General"])
+        col.metric(f"{emoji} {cat}", count)
 
-        st.divider()
-        if st.button("➕ More questions", use_container_width=True):
-            vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
-            if not vectorstore:
-                st.warning("⚠️ Please go to Visual tab and process documents first.")
-                return
-            with st.spinner("🔍 Generating more questions (no repeats)..."):
-                existing_questions = [i["question"] for i in st.session_state.jd_items]
-                more_items = generate_jd_questions(
-                    vectorstore,
-                    st.session_state.jd_text,
-                    num_questions=5,
-                    categories=st.session_state.jd_categories,
-                    exclude_questions=existing_questions
-                )
-            st.session_state.jd_items = st.session_state.jd_items + more_items
-            st.rerun()
+    st.divider()
+
+    for category in CATEGORY_DEFINITIONS.keys():
+        cat_items = [i for i in items if i["category"] == category]
+        if not cat_items:
+            continue
+        emoji, color = CATEGORY_STYLE.get(category, CATEGORY_STYLE["General"])
+        st.markdown(f"### {emoji} {category}")
+        for idx, item in enumerate(cat_items, 1):
+            _qa_card(item, idx)
+        st.write("")
+
+    st.divider()
+    if st.button("➕ More questions", use_container_width=True):
+        vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
+        if not vectorstore:
+            st.warning("⚠️ Please go to Visual tab and process documents first.")
+            return
+        with st.spinner("🔍 Generating more questions (no repeats)..."):
+            existing_questions = [i["question"] for i in st.session_state.jd_items]
+            more_items = generate_jd_questions(
+                vectorstore,
+                st.session_state.jd_text,
+                num_questions=5,
+                categories=list(CATEGORY_DEFINITIONS.keys()),
+                exclude_questions=existing_questions
+            )
+        st.session_state.jd_items = st.session_state.jd_items + more_items
+        st.rerun()
