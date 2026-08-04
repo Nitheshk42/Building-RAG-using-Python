@@ -2,6 +2,18 @@ __import__("pysqlite3")
 import sys
 sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 
+# Compatibility shim: chromadb 0.4.24 still references numpy aliases that were removed
+# in numpy 2.0 (np.float_, etc). If a numpy 2.x install slips through despite the
+# requirements.txt pin (e.g. a cached build environment), restore them before any
+# downstream library (chromadb) can hit the AttributeError.
+import numpy as _np
+if not hasattr(_np, "float_"):
+    _np.float_ = _np.float64
+if not hasattr(_np, "complex_"):
+    _np.complex_ = _np.complex128
+if not hasattr(_np, "unicode_"):
+    _np.unicode_ = _np.str_
+
 import streamlit as st
 from src.visual_pipeline import display_visual_pipeline
 from src.chat import display_chat_interface
