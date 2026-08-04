@@ -1,5 +1,6 @@
 import sqlite3
 import bcrypt
+from datetime import datetime
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "studysage.db"
@@ -22,8 +23,29 @@ def _get_conn():
             FOREIGN KEY (username) REFERENCES users(username)
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            message TEXT NOT NULL,
+            created_at TEXT
+        )
+    """)
     conn.commit()
     return conn
+
+
+def save_feedback(username, message):
+    if not message or not message.strip():
+        return False
+    conn = _get_conn()
+    conn.execute(
+        "INSERT INTO feedback (username, message, created_at) VALUES (?, ?, ?)",
+        (username, message.strip(), datetime.utcnow().isoformat())
+    )
+    conn.commit()
+    conn.close()
+    return True
 
 
 def create_user(username, email, password):

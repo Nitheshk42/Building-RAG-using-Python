@@ -11,7 +11,7 @@ from src.jd_chat import display_jd_prep
 from src.resume_tailor_ui import display_resume_tailor
 from src.auth_ui import display_auth
 from src.onboarding import display_onboarding, process_resume
-from src.auth import get_profile
+from src.auth import get_profile, save_feedback
 
 st.set_page_config(page_title="StudySage", page_icon="📚", layout="wide")
 
@@ -39,6 +39,62 @@ h1, h2, h3 {
 /* Keep Streamlit's icon font working (upload icon, chevrons, etc.) - do not override these */
 [data-testid="stIconMaterial"], .material-symbols-rounded, .material-icons, span[class*="material-symbols"] {
     font-family: 'Material Symbols Rounded' !important;
+}
+
+/* ===== Visual polish: rounded cards, soft shadows, Google-blue accents ===== */
+
+/* Bordered containers (answer cards across every tab) get a soft elevated look */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 12px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2) !important;
+    transition: box-shadow 0.15s ease;
+}
+[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    box-shadow: 0 4px 12px rgba(26,115,232,0.15), 0 1px 3px rgba(0,0,0,0.3) !important;
+}
+
+/* Buttons: rounded, slightly bolder */
+.stButton button {
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+    transition: transform 0.1s ease;
+}
+.stButton button:hover {
+    transform: translateY(-1px);
+}
+
+/* Tabs: cleaner underline, active tab in accent color */
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #1a73e8 !important;
+    font-weight: 600 !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+    background-color: #1a73e8 !important;
+    height: 3px !important;
+    border-radius: 2px !important;
+}
+
+/* Sidebar: subtle separation from main content */
+[data-testid="stSidebar"] {
+    border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Expanders: rounded, matching card style */
+[data-testid="stExpander"] {
+    border-radius: 10px !important;
+    overflow: hidden;
+}
+
+/* Inputs: rounded corners for a softer feel */
+.stTextInput input, .stTextArea textarea, .stSelectbox > div {
+    border-radius: 8px !important;
+}
+
+/* Metrics: slight card feel */
+[data-testid="stMetric"] {
+    background: rgba(26,115,232,0.06);
+    border-radius: 10px;
+    padding: 10px 14px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -105,6 +161,19 @@ with st.sidebar:
         for key in ["auth_user", "auth_profile", "vectorstore", "splits", "all_embeddings"]:
             st.session_state.pop(key, None)
         st.rerun()
+
+    st.divider()
+    with st.expander("💬 Send feedback"):
+        feedback_text = st.text_area(
+            "What's working, what's not, what would help?",
+            key="feedback_text", height=100, label_visibility="collapsed",
+            placeholder="What's working, what's not, what would help?"
+        )
+        if st.button("Submit feedback", use_container_width=True):
+            if save_feedback(st.session_state.auth_user, feedback_text):
+                st.success("✅ Thanks — feedback saved!")
+            else:
+                st.warning("Write something before submitting.")
 
 if "pending_new_resume" in st.session_state:
     _confirm_reprocess_dialog()

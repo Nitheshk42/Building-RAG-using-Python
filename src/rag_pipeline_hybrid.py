@@ -188,11 +188,21 @@ RESUME CONTEXT:
 Generate exactly {num_questions} likely interview questions for this JD, ONLY using these categories:
 {category_desc}
 {avoid_block}
+QUESTION STYLE: Phrase each question the way a real interviewer would say it out loud, naming
+the actual company/project/technology from the resume where relevant — e.g. "Walk me through
+the Kafka producer you built at Wells Fargo" rather than "Describe your experience with Kafka."
+
+ANSWER STYLE: Write the answer as a flowing first-person narrative (not bullet points), the way
+the candidate would actually say it in an interview. Carry over any concrete numbers, config
+values, tool versions, or metrics from the resume VERBATIM — never smooth them into vague
+phrases. If the resume doesn't have that level of detail for a given point, don't invent it;
+keep the answer honest about what's actually there.
+
 For EACH question, output in this EXACT format (use "---" as a separator between questions, no extra text):
 
 Category: <one of: {category_options}>
-Question: <the interview question>
-Answer: <a strong resume-grounded model answer, 3-5 sentences, specific not generic>
+Question: <the interview question, phrased naturally, naming specifics from the resume>
+Answer: <first-person narrative answer, 4-7 sentences, as concrete as the resume allows>
 ---
 
 Begin now:"""
