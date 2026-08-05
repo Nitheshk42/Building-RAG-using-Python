@@ -25,6 +25,18 @@ def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
 
+_RECENCY_WORDS = ("recent", "current", "latest", "currently", "nowadays", "these days")
+
+
+def _retrieval_query(question):
+    """If the question is asking about the recent/current project, bias the retrieval query
+    itself toward the terms that mark the newest role (e.g. 'Current', 'Present') so the
+    right chunk actually gets retrieved, not just correctly reasoned about after the fact."""
+    if any(w in question.lower() for w in _RECENCY_WORDS):
+        return question + " Current Present most recent latest role"
+    return question
+
+
 def route_question(question):
     """Classify the question so the user can see WHY each side answered the way it did."""
     llm = _get_llm(temperature=0, max_tokens=120)
@@ -61,9 +73,18 @@ SPECIFICITY RULE: If the resume context contains concrete numbers, metrics, conf
 tool versions, or specific project/technology names, quote them verbatim rather than
 paraphrasing them away into generic statements.
 
-If the question asks about MULTIPLE distinct items (e.g. "top 10 X", "each of Y"),
-go through EVERY item the question lists and state for each one, briefly, whether the
-resume context covers it and what it says if so.
+FORMAT: For narrative/conversational questions ("tell me about yourself," "tell me about your
+recent project," etc.) write ONE flowing, coherent answer in first person — do not split into
+labeled sections or invent extra sub-topics the question didn't ask about. Only use a per-item
+breakdown if the question explicitly enumerates a list of distinct named things to go through
+one by one (e.g. "top 10 X", "each of these five Y").
+
+RECENCY RULE: If the question asks about the "recent," "current," "latest," or "most recent"
+project/role, do NOT just answer about whichever project happens to appear first in the context
+below. Scan ALL project/role entries in the context, compare their date ranges, and identify the
+one that is actually most recent — the entry marked "Current" / "Present", or if none is marked
+that way, the one with the latest start date. Base the answer on that entry specifically. If the
+context doesn't make the dates clear enough to tell, say so rather than guessing.
 
 If the resume context doesn't cover something, say so plainly rather than skipping it.
 
@@ -74,11 +95,11 @@ QUESTION: {question}
 
 Answer strictly from the resume context:"""
     prompt = ChatPromptTemplate.from_template(template)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 15})
 
     chain = (
         {
-            "context": lambda x: format_docs(retriever.invoke(x["question"])),
+            "context": lambda x: format_docs(retriever.invoke(_retrieval_query(x["question"]))),
             "question": lambda x: x["question"]
         }
         | prompt
@@ -157,6 +178,40 @@ CATEGORY_DEFINITIONS = {
 }
 
 
+def check_domain_alignment(vectorstore, jd_text):
+    """Quick check: does this JD's core domain actually match what's evidenced in the resume?
+    Returns {"aligned": bool, "note": str} so the UI can warn the user before generating
+    Q&A that would otherwise falsely imply a fit."""
+    llm = _get_llm(temperature=0, max_tokens=150)
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
+    context = format_docs(retriever.invoke(jd_text))
+    template = """Compare the core domain/role of this JOB DESCRIPTION against the candidate's
+RESUME CONTEXT below. Judge whether the JD's primary domain (e.g. the main tech stack, role
+type, or industry it's hiring for) is actually reflected in the resume - not just a shared
+buzzword here and there.
+
+JOB DESCRIPTION:
+{jd_text}
+
+RESUME CONTEXT:
+{context}
+
+Reply in exactly this format:
+Aligned: <YES|PARTIAL|NO>
+Note: <one short sentence explaining the core domain match or mismatch>"""
+    prompt = ChatPromptTemplate.from_template(template)
+    chain = prompt | llm | StrOutputParser()
+    result = chain.invoke({"jd_text": jd_text, "context": context})
+
+    aligned, note = "PARTIAL", "Could not determine domain fit."
+    for line in result.splitlines():
+        if line.lower().startswith("aligned:"):
+            aligned = line.split(":", 1)[1].strip().upper()
+        elif line.lower().startswith("note:"):
+            note = line.split(":", 1)[1].strip()
+    return {"aligned": aligned, "note": note}
+
+
 def generate_jd_questions(vectorstore, jd_text, num_questions=8, categories=None, exclude_questions=None):
     """Given a job description, retrieve the most relevant resume chunks and generate
     a structured list of likely interview questions with resume-grounded model answers.
@@ -184,6 +239,14 @@ JOB DESCRIPTION:
 
 RESUME CONTEXT:
 {context}
+
+HONESTY ABOUT DOMAIN FIT: First, judge whether the JD's core domain (main tech stack, role
+type) actually matches what's in the resume. If the resume has genuinely little or no overlap
+with the JD's core domain, do NOT pretend a fit — weight questions toward the "Gap" category,
+and for any question you do write, the answer must honestly acknowledge what's transferable
+(general engineering fundamentals, adjacent tools) rather than inventing direct experience the
+resume doesn't show. Never fabricate a project or skill the resume doesn't evidence just because
+the JD asks for it.
 
 Generate exactly {num_questions} likely interview questions for this JD, ONLY using these categories:
 {category_desc}
@@ -236,57 +299,56 @@ Begin now:"""
 def get_technical_chain(vectorstore):
     """Resume-aware but expands like an interview follow-up: approach, challenges, resolution.
     Must be honest about what the resume actually evidences vs. general knowledge -
-    never invent first-person "I did X" claims the resume doesn't support. Must expand
-    into one block per item when the question asks about multiple items (e.g. "top 10")."""
+    never invent first-person "I did X" claims the resume doesn't support."""
     llm = _get_llm(temperature=0.3, max_tokens=3000)
     template = """You are helping prepare for a technical interview follow-up: "walk me through
 how you did that."
 
 CRITICAL HONESTY RULE: Only say "I did X" / "In my role I..." if the RESUME CONTEXT below
 actually contains evidence of it. Never invent a specific first-person story, project, or
-outcome that isn't in the context. If the resume does NOT clearly cover an item, say so
+outcome that isn't in the context. If the resume does NOT clearly cover something, say so
 plainly and instead explain how you WOULD approach it in general — do not disguise general
 knowledge as personal history.
 
-MULTI-ITEM RULE: If the question asks about several distinct items (e.g. "top 10 OWASP risks",
-"each of these concepts"), you MUST cover EVERY item listed, one at a time, each as its own
-labeled block below — do not collapse them into a single generic answer.
-
 SPECIFICITY RULE: When the resume context contains concrete details — exact numbers, metrics,
-config values, tool versions, thread/pool sizes, throughput figures, timeframes, specific
-class/service/project names — you MUST carry them into the answer VERBATIM. Do not smooth a
-specific number into a vague phrase like "improved performance." If the resume says "tuned
-thread pool size to 10" or "5000 records every 30 seconds," the answer must say that exact
-number, not "optimized the configuration."
+config values, tool versions, timeframes, specific class/service/project names — carry them
+into the answer VERBATIM. Do not smooth a specific number into a vague phrase like "improved
+performance." If the resume says "tuned thread pool size to 10," say that exact number.
 
-For EACH item, use this exact format:
+FORMAT DECISION — read the question carefully before choosing:
+- If it's a NARRATIVE/CONVERSATIONAL question ("tell me about yourself," "walk me through your
+  background," "tell me about yourself and your recent project," etc.) — even if it has multiple
+  clauses — write ONE single flowing, well-written narrative answer in first person, the way a
+  real candidate would actually speak in an interview. Do NOT split it into labeled sections. Do
+  NOT invent extra sub-topics the question didn't ask about. Weave the resume's actual companies,
+  roles, tools, and specifics naturally into the story, in a logical order (e.g. current role ->
+  what you work on -> a recent project -> how you approach it).
+- ONLY if the question explicitly enumerates a list of distinct named items to go through one by
+  one (e.g. "top 10 OWASP risks," "walk me through each of these five concepts") should you use a
+  separate labeled block per item, in this format:
+  ### <item name/number>
+  **Your resume evidence:** ... **Approach/Tools:** ... **Challenges & Resolution:** ...
 
-### <item name/number>
-**Your resume evidence:** what the resume actually shows for this item, quoting concrete
-specifics verbatim where present, OR "Not directly evidenced in resume — general approach:"
-if it isn't there
-**Approach/Tools:** specific tools/technologies/config values (from resume if present, else
-typical ones, clearly marked as general knowledge)
-**Challenges & Resolution:** the specific failure mode and specific fix if evidenced (e.g. a
-concrete bottleneck and the concrete change that resolved it), otherwise phrase as "a common
-challenge here would be..."
+Default to the narrative style unless the question is unambiguously a numbered/enumerated list.
 
-If this is a SINGLE-item question (not a "top N" list), you may expand each field to 3-5
-sentences of concrete, narrative detail instead of 1-2 — depth matters more than brevity here.
-Be specific and vary the wording across items — do not reuse the same sentence template.
+RECENCY RULE: If the question asks about the "recent," "current," "latest," or "most recent"
+project/role, do NOT default to whichever project happens to appear first in the context below.
+Scan ALL project/role entries in the context, compare their date ranges, and identify the one
+that is actually most recent — the entry marked "Current" / "Present", or if none is marked that
+way, the one with the latest start date. Base the answer on that entry specifically.
 
 RESUME CONTEXT:
 {context}
 
 QUESTION: {question}
 
-Answer (cover every item asked about):"""
+Answer:"""
     prompt = ChatPromptTemplate.from_template(template)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 15})
 
     chain = (
         {
-            "context": lambda x: format_docs(retriever.invoke(x["question"])),
+            "context": lambda x: format_docs(retriever.invoke(_retrieval_query(x["question"]))),
             "question": lambda x: x["question"]
         }
         | prompt

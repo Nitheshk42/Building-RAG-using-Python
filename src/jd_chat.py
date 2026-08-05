@@ -1,5 +1,5 @@
 import streamlit as st
-from src.rag_pipeline_hybrid import generate_jd_questions, CATEGORY_DEFINITIONS
+from src.rag_pipeline_hybrid import generate_jd_questions, check_domain_alignment, CATEGORY_DEFINITIONS
 from src.vector_store import get_vectorstore
 
 CATEGORY_STYLE = {
@@ -66,7 +66,8 @@ def display_jd_prep():
             st.warning("⚠️ Please go to Visual tab and process documents first.")
             return
 
-        with st.spinner("🔍 Matching your resume against this JD and generating questions..."):
+        with st.spinner("🔍 Checking domain fit and generating questions..."):
+            alignment = check_domain_alignment(vectorstore, jd_text)
             items = generate_jd_questions(
                 vectorstore, jd_text, num_questions=5, categories=list(CATEGORY_DEFINITIONS.keys())
             )
@@ -77,11 +78,21 @@ def display_jd_prep():
 
         st.session_state.jd_items = items
         st.session_state.jd_text = jd_text
+        st.session_state.jd_alignment = alignment
 
     if "jd_items" not in st.session_state:
         return
 
     items = st.session_state.jd_items
+    alignment = st.session_state.get("jd_alignment")
+    if alignment and alignment["aligned"] != "YES":
+        icon = "🚫" if alignment["aligned"] == "NO" else "⚠️"
+        st.warning(
+            f"{icon} **Domain fit: {alignment['aligned']}** — {alignment['note']} "
+            "Questions below are still generated, but lean on the Gap category and answer "
+            "honestly about what's actually transferable.",
+            icon=icon,
+        )
     st.write("")
 
     counts = {}

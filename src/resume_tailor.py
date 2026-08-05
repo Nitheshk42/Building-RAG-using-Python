@@ -6,6 +6,7 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from docx import Document as DocxDocument
+from docx.shared import Pt
 
 
 def _get_llm(temperature=0.4, max_tokens=3000):
@@ -138,14 +139,10 @@ def _parse_projects(raw):
     return projects
 
 
-def render_side_by_side_diff(original, edited):
-    """GitHub PR-style split diff: returns (left_html, right_html). Left is the original with
-    removed words struck through in red; right is the edited version with added words
-    highlighted in green. Unchanged words render plainly on both sides."""
-    orig_words = original.split()
-    edit_words = edited.split()
+def _word_diff_line(orig_line, edit_line):
+    """Word-level diff HTML for a single pair of lines (used when a line is genuinely edited)."""
+    orig_words, edit_words = orig_line.split(), edit_line.split()
     sm = difflib.SequenceMatcher(None, orig_words, edit_words)
-
     left_parts, right_parts = [], []
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag == "equal":
@@ -166,33 +163,245 @@ def render_side_by_side_diff(original, edited):
             right_parts.append(
                 f'<span style="background:#143d1d;color:#8affa0;padding:1px 3px;border-radius:3px;">{" ".join(edit_words[j1:j2])}</span>'
             )
-
     return " ".join(left_parts), " ".join(right_parts)
+
+
+def render_side_by_side_diff(original, edited):
+    """GitHub PR-style split diff: returns (left_html, right_html). Diffs LINE by line so
+    bullet-point structure is preserved (each original line stays its own line; new lines are
+    added as whole new bullets on the right, not merged into one paragraph)."""
+    orig_lines = [l for l in original.splitlines()]
+    edit_lines = [l for l in edited.splitlines()]
+    sm = difflib.SequenceMatcher(None, orig_lines, edit_lines)
+
+    left_rows, right_rows = [], []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            for line in orig_lines[i1:i2]:
+                left_rows.append(line)
+                right_rows.append(line)
+        elif tag == "delete":
+            for line in orig_lines[i1:i2]:
+                left_rows.append(f'<span style="background:#4a1414;color:#ff8a8a;text-decoration:line-through;padding:1px 3px;border-radius:3px;">{line}</span>')
+        elif tag == "insert":
+            for line in edit_lines[j1:j2]:
+                right_rows.append(f'<span style="background:#143d1d;color:#8affa0;padding:1px 3px;border-radius:3px;">{line}</span>')
+        elif tag == "replace":
+            o_block, e_block = orig_lines[i1:i2], edit_lines[j1:j2]
+            paired = min(len(o_block), len(e_block))
+            for k in range(paired):
+                l, r = _word_diff_line(o_block[k], e_block[k])
+                left_rows.append(l)
+                right_rows.append(r)
+            for line in o_block[paired:]:
+                left_rows.append(f'<span style="background:#4a1414;color:#ff8a8a;text-decoration:line-through;padding:1px 3px;border-radius:3px;">{line}</span>')
+            for line in e_block[paired:]:
+                right_rows.append(f'<span style="background:#143d1d;color:#8affa0;padding:1px 3px;border-radius:3px;">{line}</span>')
+
+    def _as_html(rows):
+        out = []
+        for row in rows:
+            stripped = row.strip()
+            if not stripped:
+                out.append("<div style='height:6px'></div>")
+            else:
+                out.append(f"<div style='margin:4px 0;'>&bull;&nbsp; {row}</div>")
+        return "\n".join(out)
+
+    return _as_html(left_rows), _as_html(right_rows)
+
+
+def insert_naturally(original, new_bullets):
+    """Insert each approved new bullet right after the existing line it's most topically
+    related to (by word overlap), instead of always tacking everything onto the end. Falls
+    back to the end only if no line has any meaningful overlap."""
+    if not new_bullets:
+        return original
+
+    lines = original.splitlines()
+    stopwords = {
+        "the", "a", "an", "and", "or", "to", "for", "of", "in", "on", "with", "using",
+        "at", "by", "from", "as", "was", "were", "is", "are", "that", "this", "into"
+    }
+
+    def _keywords(text):
+        return {w.strip(".,;:()").lower() for w in text.split() if len(w) > 3 and w.lower() not in stopwords}
+
+    line_keywords = [_keywords(l) for l in lines]
+    insertions = {}  # line index -> list of bullets to insert after that line
+    tail = []
+
+    for bullet in new_bullets:
+        b_keywords = _keywords(bullet)
+        best_idx, best_score = None, 0
+        for idx, lk in enumerate(line_keywords):
+            if not lk:
+                continue
+            overlap = len(b_keywords & lk)
+            if overlap > best_score:
+                best_score, best_idx = overlap, idx
+        if best_idx is not None and best_score > 0:
+            insertions.setdefault(best_idx, []).append(bullet)
+        else:
+            tail.append(bullet)
+
+    result = []
+    for idx, line in enumerate(lines):
+        result.append(line)
+        for bullet in insertions.get(idx, []):
+            result.append(bullet)
+    result.extend(tail)
+    return "\n".join(result)
+
+
+def _flexible_find(snippet, haystack):
+    """Whitespace-tolerant search: PDF/DOCX text extraction often reflows whitespace, so an
+    exact substring match on the LLM's 'verbatim' copy frequently fails. Build a regex from the
+    snippet that treats any run of whitespace as flexible, and return the matched span."""
+    snippet_lines = [l.strip() for l in snippet.splitlines() if l.strip()]
+    if not snippet_lines:
+        return None
+    pattern_parts = [re.escape(l) for l in snippet_lines]
+    pattern = r"\s+".join(pattern_parts)
+    try:
+        match = re.search(pattern, haystack, flags=re.DOTALL)
+    except re.error:
+        return None
+    return match
 
 
 def build_tailored_docx(full_resume_text, replacements):
     """replacements: list of (original_snippet, final_text) tuples to substitute into the
-    full resume text. Falls back to appending if an exact match isn't found (PDF text
-    extraction can introduce whitespace differences)."""
+    full resume text. Uses whitespace-tolerant matching (PDF/DOCX text extraction can reflow
+    whitespace so an exact match on the LLM's 'verbatim' copy often fails), and applies real
+    Word bullet-list styling to bullet-like lines instead of flat paragraphs."""
     final_text = full_resume_text
     unmatched = []
     for original_snippet, final_snippet in replacements:
         if original_snippet in final_text:
             final_text = final_text.replace(original_snippet, final_snippet, 1)
+            continue
+        match = _flexible_find(original_snippet, final_text)
+        if match:
+            final_text = final_text[:match.start()] + final_snippet + final_text[match.end():]
         else:
             unmatched.append(final_snippet)
 
     doc = DocxDocument()
-    for line in final_text.split("\n"):
-        doc.add_paragraph(line)
+    _write_body(doc, final_text)
 
     if unmatched:
         doc.add_paragraph("")
         doc.add_paragraph("--- Tailored additions (could not auto-place in original text) ---")
         for snippet in unmatched:
-            doc.add_paragraph(snippet)
+            _write_body(doc, snippet)
 
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
+
+
+_SUBHEADER_PATTERN = re.compile(r"^(Client|Role|Company|Project|Title)\s*:", re.IGNORECASE)
+
+
+def _classify_lines(text):
+    """Mirrors how this candidate's actual resume is structured (verified against the
+    original .docx): name + contact as the first two non-blank lines, ALL-CAPS short lines as
+    section headers (PROFESSIONAL SUMMARY, TECHNICAL SKILLS, PROFESSIONAL EXPERIENCE...),
+    'Client:'/'Role:' lines as bold sub-headers, tab-indented or long lines as bullets.
+    Yields (kind, clean_text) per line, where kind is one of:
+    blank, name, contact, header, subheader, bullet."""
+    seen_nonblank = 0
+    for raw_line in text.split("\n"):
+        stripped_raw = raw_line.strip()
+        clean = stripped_raw.lstrip("-•*").strip()
+        if not clean:
+            yield "blank", ""
+            continue
+        seen_nonblank += 1
+        if seen_nonblank == 1:
+            yield "name", clean
+        elif seen_nonblank == 2 and ("|" in clean or "@" in clean or re.search(r"\d{3}", clean)):
+            yield "contact", clean
+        elif _SUBHEADER_PATTERN.match(clean):
+            yield "subheader", clean
+        elif raw_line.startswith("\t") or len(clean) > 45:
+            yield "bullet", clean
+        elif clean.isupper() and len(clean) < 45:
+            yield "header", clean
+        else:
+            yield "subheader", clean
+
+
+def _write_body(doc, text):
+    """Write text into the doc mirroring the candidate's actual resume structure: name/contact
+    styled as a header block, ALL-CAPS section titles as bold headings with spacing, Client/Role
+    lines as bold sub-headers, and real bullet-list responsibility lines - not flat paragraphs."""
+    for kind, clean in _classify_lines(text):
+        if kind == "blank":
+            doc.add_paragraph("")
+        elif kind == "name":
+            p = doc.add_paragraph()
+            p.alignment = 1  # center
+            run = p.add_run(clean)
+            run.bold = True
+            run.font.size = Pt(16)
+        elif kind == "contact":
+            p = doc.add_paragraph()
+            p.alignment = 1
+            run = p.add_run(clean)
+            run.font.size = Pt(10)
+        elif kind == "header":
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(10)
+            run = p.add_run(clean)
+            run.bold = True
+            run.font.size = Pt(12)
+        elif kind == "subheader":
+            p = doc.add_paragraph()
+            run = p.add_run(clean)
+            run.bold = True
+        else:  # bullet
+            doc.add_paragraph(clean, style="List Bullet")
+
+
+def render_tailored_preview_markdown(full_resume_text, replacements):
+    """Builds the same final text build_tailored_docx would produce, rendered as markdown so
+    the user can see the final structure (headers vs. bullets) in-app before downloading."""
+    final_text = full_resume_text
+    unmatched = []
+    for original_snippet, final_snippet in replacements:
+        if original_snippet in final_text:
+            final_text = final_text.replace(original_snippet, final_snippet, 1)
+            continue
+        match = _flexible_find(original_snippet, final_text)
+        if match:
+            final_text = final_text[:match.start()] + final_snippet + final_text[match.end():]
+        else:
+            unmatched.append(final_snippet)
+
+    lines_md = []
+    for kind, clean in _classify_lines(final_text):
+        if kind == "blank":
+            lines_md.append("")
+        elif kind == "name":
+            lines_md.append(f"### {clean}")
+        elif kind == "contact":
+            lines_md.append(f"*{clean}*")
+        elif kind == "header":
+            lines_md.append(f"\n**{clean.upper()}**")
+        elif kind == "subheader":
+            lines_md.append(f"**{clean}**")
+        else:  # bullet
+            lines_md.append(f"- {clean}")
+
+    if unmatched:
+        lines_md.append("\n---\n*Tailored additions (could not auto-place):*")
+        for snippet in unmatched:
+            for line in snippet.split("\n"):
+                clean = line.strip()
+                if clean:
+                    lines_md.append(f"- {clean}")
+
+    return "\n".join(lines_md)

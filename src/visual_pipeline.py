@@ -456,16 +456,7 @@ def display_visual_pipeline():
             - Found the 3 CLOSEST to your question in 384D space
             - Higher % = closer in that space = more relevant!
             """)
-            
 
-st.divider()
-st.success("""
-**🎓 What You Learned:**
-1. **Stage 1 - Chunking ✂️**: Book → Small Cards (1000 chars each)
-2. **Stage 2 - Embeddings 🧠**: Each Card → 384 Magic Numbers (Vector)
-3. **Stage 3 - Vector DB 🏢**: Cards → HNSW Multi-Floor Library (Fast highways + detailed roads)
-4. **Stage 4 - Search 🔍**: Question → Find Similar Cards (Start TOP → Jump highways → Refine locally → ANSWER!)
-""")
 
 if __name__ == "__main__":
     display_visual_pipeline()

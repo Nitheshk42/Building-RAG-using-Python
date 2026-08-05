@@ -1,5 +1,8 @@
 import streamlit as st
-from src.resume_tailor import analyze_resume_for_jd, render_side_by_side_diff, build_tailored_docx
+from src.resume_tailor import (
+    analyze_resume_for_jd, render_side_by_side_diff, build_tailored_docx,
+    insert_naturally, render_tailored_preview_markdown
+)
 
 
 def display_resume_tailor():
@@ -79,18 +82,15 @@ def display_resume_tailor():
         # Nothing changes until the user checks something on - original stays original by default
         approved = st.session_state.tailor_approved[idx]
         approved_skills = st.session_state.tailor_approved_skills[idx]
-        final_snippet = proj["original"]
-        approved_text = "\n".join(
+        approved_bullets = [
             proj["suggestions"][i] for i in sorted(approved) if i < len(proj["suggestions"])
-        )
-        approved_skill_text = "\n".join(
+        ] + [
             proj["missing_skills"][i]["draft"] for i in sorted(approved_skills)
             if i < len(proj["missing_skills"])
-        )
-        if approved_text:
-            final_snippet += "\n" + approved_text
-        if approved_skill_text:
-            final_snippet += "\n" + approved_skill_text
+        ]
+        # Insert each approved bullet right next to the existing line it's most related to,
+        # rather than always tacking everything onto the end.
+        final_snippet = insert_naturally(proj["original"], approved_bullets)
         final_snippets.append(final_snippet)
 
         st.caption("Side-by-side diff — stays identical until you check a box above, then updates live:")
@@ -107,13 +107,22 @@ def display_resume_tailor():
 
         st.divider()
 
-    if st.button("📥 Generate Tailored Resume (.docx)", use_container_width=True, type="primary"):
+    if st.button("👁️ Preview Tailored Resume", use_container_width=True, type="primary"):
         replacements = [
             (proj["original"], final_snippets[idx]) for idx, proj in enumerate(projects)
         ]
+        st.session_state.tailor_replacements = replacements
+
+    if "tailor_replacements" in st.session_state:
+        replacements = st.session_state.tailor_replacements
+        st.markdown("**📄 Preview — this is the structure/formatting the downloaded .docx will have:**")
+        with st.container(border=True):
+            preview_md = render_tailored_preview_markdown(st.session_state.tailor_full_text, replacements)
+            st.markdown(preview_md)
+
         docx_buffer = build_tailored_docx(st.session_state.tailor_full_text, replacements)
         st.download_button(
-            "⬇️ Download Tailored Resume",
+            "⬇️ Download Tailored Resume (.docx)",
             data=docx_buffer,
             file_name="tailored_resume.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

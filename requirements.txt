@@ -30,7 +30,9 @@ sentence-transformers
 # NOTE: chromadb 0.4.24 still uses removed NumPy aliases (np.float_, np.uint) internally,
 # which is why numpy is pinned to <2.0.0 above - NumPy 2.0 deleted those aliases.
 chromadb==0.4.24
-pysqlite3-binary
+# Linux-only (no macOS wheels exist) - not needed locally, app.py already skips it
+# gracefully via try/except if it's missing.
+pysqlite3-binary; sys_platform == "linux"
 
 # PDF Handling
 pypdf
