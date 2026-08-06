@@ -1,8 +1,35 @@
 import streamlit as st
 from src.resume_tailor import (
     analyze_resume_for_jd, render_side_by_side_diff, build_tailored_docx,
-    insert_naturally, render_tailored_preview_markdown
+    insert_naturally, render_tailored_preview_markdown,
+    extract_jd_keywords, ats_match_score
 )
+
+
+def _ats_score_block(current_text, jd_keywords, baseline_score, container):
+    """Renders a live ATS keyword-match score. Recomputes on every rerun (Streamlit reruns the
+    whole page on each checkbox click), so checking a suggestion on/off updates the score
+    immediately - no extra button needed."""
+    score, matched, missing = ats_match_score(current_text, jd_keywords)
+    delta = score - baseline_score
+    with container:
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.metric(
+                "🎯 ATS Match Score",
+                f"{score}%",
+                delta=f"{delta:+d}%" if delta != 0 else None,
+            )
+        with col2:
+            st.progress(min(score, 100) / 100)
+            if missing:
+                st.caption(
+                    f"🔎 Missing from your resume ({len(missing)}): "
+                    + ", ".join(missing[:12]) + ("..." if len(missing) > 12 else "")
+                )
+            else:
+                st.caption("✅ All detected JD keywords are present in your resume.")
+    return score
 
 
 def display_resume_tailor():
@@ -31,16 +58,25 @@ def display_resume_tailor():
         if not projects:
             st.error("❌ Couldn't parse a result — try again.")
             return
+        jd_keywords = extract_jd_keywords(jd_text)
+        baseline_score, _, _ = ats_match_score(full_resume_text, jd_keywords)
         st.session_state.tailor_projects = projects
         st.session_state.tailor_full_text = full_resume_text
         st.session_state.tailor_approved = [set() for _ in projects]
         st.session_state.tailor_approved_skills = [set() for _ in projects]
+        st.session_state.tailor_jd_keywords = jd_keywords
+        st.session_state.tailor_baseline_score = baseline_score
 
     if "tailor_projects" not in st.session_state:
         return
 
     projects = st.session_state.tailor_projects
+    jd_keywords = st.session_state.get("tailor_jd_keywords", [])
+    baseline_score = st.session_state.get("tailor_baseline_score", 0)
     st.success(f"✅ Found {len(projects)} project(s)")
+
+    ats_container = st.container(border=True)
+    st.divider()
 
     final_snippets = []
 
@@ -106,6 +142,13 @@ def display_resume_tailor():
                 st.markdown(right_html, unsafe_allow_html=True)
 
         st.divider()
+
+    # Current resume text = original with each project's approved edits swapped in - used to
+    # score against the JD live, exactly reflecting whatever's checked right now.
+    current_text = st.session_state.tailor_full_text
+    for idx, proj in enumerate(projects):
+        current_text = current_text.replace(proj["original"], final_snippets[idx], 1)
+    _ats_score_block(current_text, jd_keywords, baseline_score, ats_container)
 
     if st.button("👁️ Preview Tailored Resume", use_container_width=True, type="primary"):
         replacements = [

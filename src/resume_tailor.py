@@ -21,6 +21,78 @@ def _get_llm(temperature=0.4, max_tokens=3000):
     )
 
 
+_ATS_STOPWORDS = {
+    "the", "a", "an", "and", "or", "to", "for", "of", "in", "on", "with", "using", "at", "by",
+    "from", "as", "was", "were", "is", "are", "that", "this", "into", "be", "will", "you", "your",
+    "we", "our", "us", "job", "role", "work", "working", "team", "years", "year", "experience",
+    "strong", "ability", "skills", "skill", "knowledge", "including", "etc", "must", "should",
+    "responsibilities", "requirements", "required", "preferred", "plus", "about", "who", "what",
+    "have", "has", "had", "can", "all", "any", "other", "such", "not", "than", "their", "they",
+    "it", "its", "these", "those", "also", "new", "across", "within", "per", "based", "related",
+    "looking", "candidate", "candidates", "company", "position", "opportunity", "description",
+    "hiring", "infrastructure", "expertise", "code", "environment", "environments", "systems",
+    "system", "solutions", "solution", "large", "high", "level", "levels", "join", "great",
+}
+
+
+def extract_jd_keywords(jd_text, max_keywords=30):
+    """Cheap, deterministic keyword extraction (no LLM call, so it can run on every checkbox
+    click for a truly 'live' score) - pulls out the tool/tech/skill terms an ATS keyword scan
+    would actually look for: capitalized/CamelCase tokens (tool names), acronyms, and
+    multi-word technical phrases, ranked by frequency."""
+    # Multi-word capitalized phrases (e.g. "Apache Spark", "Machine Learning") + single tech tokens
+    phrase_pattern = re.compile(r"\b([A-Z][a-zA-Z0-9+#]*(?:\s+[A-Z][a-zA-Z0-9+#]*){0,2})\b")
+    candidates = phrase_pattern.findall(jd_text)
+
+    freq = {}
+    for c in candidates:
+        key = c.strip().rstrip(".")
+        if len(key) < 2:
+            continue
+        low = key.lower()
+        if low in _ATS_STOPWORDS:
+            continue
+        if all(w.lower() in _ATS_STOPWORDS for w in key.split()):
+            continue
+        freq[key] = freq.get(key, 0) + 1
+
+    # Also pick up common lowercase technical single-word tokens with digits/symbols (e.g. "3+", "sql")
+    for w in re.findall(r"\b[a-z][a-z0-9+#./-]{2,}\b", jd_text.lower()):
+        if w in _ATS_STOPWORDS or len(w) < 3:
+            continue
+        freq.setdefault(w, 0)
+        freq[w] += 0.3  # lower weight than proper-noun tech terms
+
+    ranked = sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))
+    seen_lower = set()
+    keywords = []
+    for term, _ in ranked:
+        low = term.lower()
+        if low in seen_lower:
+            continue
+        seen_lower.add(low)
+        keywords.append(term)
+        if len(keywords) >= max_keywords:
+            break
+    return keywords
+
+
+def ats_match_score(resume_text, jd_keywords):
+    """Returns (score 0-100, matched keywords, missing keywords). Simple presence-based
+    keyword match against the resume text, the way a basic ATS keyword scan works."""
+    if not jd_keywords:
+        return 0, [], []
+    resume_low = resume_text.lower()
+    matched, missing = [], []
+    for kw in jd_keywords:
+        if kw.lower() in resume_low:
+            matched.append(kw)
+        else:
+            missing.append(kw)
+    score = round(100 * len(matched) / len(jd_keywords))
+    return score, matched, missing
+
+
 def analyze_resume_for_jd(resume_text, jd_text):
     """Finds the first two project sections in the resume and, against the JD, produces:
     - SUGGESTIONS: new candidate bullet points to ADD (existing text is never rewritten or
@@ -310,14 +382,17 @@ def _classify_lines(text):
     original .docx): name + contact as the first two non-blank lines, ALL-CAPS short lines as
     section headers (PROFESSIONAL SUMMARY, TECHNICAL SKILLS, PROFESSIONAL EXPERIENCE...),
     'Client:'/'Role:' lines as bold sub-headers, tab-indented or long lines as bullets.
-    Yields (kind, clean_text) per line, where kind is one of:
-    blank, name, contact, header, subheader, bullet."""
+    Blank lines are dropped entirely — the original resume alternates a blank line after every
+    single bullet (an artifact of how python-docx text extraction represents paragraph breaks),
+    which if rendered literally produces the big ugly gaps between points the tailored doc
+    shouldn't have. Real visual separation instead comes from spacing applied before headers.
+    Yields (kind, clean_text) per non-blank line, kind in: name, contact, header, subheader,
+    bullet, subbullet."""
     seen_nonblank = 0
     for raw_line in text.split("\n"):
         stripped_raw = raw_line.strip()
         clean = stripped_raw.lstrip("-•*").strip()
         if not clean:
-            yield "blank", ""
             continue
         seen_nonblank += 1
         if seen_nonblank == 1:
@@ -326,6 +401,8 @@ def _classify_lines(text):
             yield "contact", clean
         elif _SUBHEADER_PATTERN.match(clean):
             yield "subheader", clean
+        elif raw_line.startswith("\t\t"):
+            yield "subbullet", clean
         elif raw_line.startswith("\t") or len(clean) > 45:
             yield "bullet", clean
         elif clean.isupper() and len(clean) < 45:
@@ -336,12 +413,11 @@ def _classify_lines(text):
 
 def _write_body(doc, text):
     """Write text into the doc mirroring the candidate's actual resume structure: name/contact
-    styled as a header block, ALL-CAPS section titles as bold headings with spacing, Client/Role
-    lines as bold sub-headers, and real bullet-list responsibility lines - not flat paragraphs."""
+    styled as a header block, ALL-CAPS section titles as bold headings with spacing before them,
+    Client/Role lines as bold sub-headers, and tight real bullet-list responsibility lines with
+    no dead space between points - not flat paragraphs, not one blank line per bullet."""
     for kind, clean in _classify_lines(text):
-        if kind == "blank":
-            doc.add_paragraph("")
-        elif kind == "name":
+        if kind == "name":
             p = doc.add_paragraph()
             p.alignment = 1  # center
             run = p.add_run(clean)
@@ -352,18 +428,26 @@ def _write_body(doc, text):
             p.alignment = 1
             run = p.add_run(clean)
             run.font.size = Pt(10)
+            p.paragraph_format.space_after = Pt(8)
         elif kind == "header":
             p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(10)
+            p.paragraph_format.space_before = Pt(12)
+            p.paragraph_format.space_after = Pt(4)
             run = p.add_run(clean)
             run.bold = True
             run.font.size = Pt(12)
         elif kind == "subheader":
             p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(6)
+            p.paragraph_format.space_after = Pt(2)
             run = p.add_run(clean)
             run.bold = True
+        elif kind == "subbullet":
+            p = doc.add_paragraph(clean, style="List Bullet 2")
+            p.paragraph_format.space_after = Pt(0)
         else:  # bullet
-            doc.add_paragraph(clean, style="List Bullet")
+            p = doc.add_paragraph(clean, style="List Bullet")
+            p.paragraph_format.space_after = Pt(0)
 
 
 def render_tailored_preview_markdown(full_resume_text, replacements):
@@ -383,9 +467,7 @@ def render_tailored_preview_markdown(full_resume_text, replacements):
 
     lines_md = []
     for kind, clean in _classify_lines(final_text):
-        if kind == "blank":
-            lines_md.append("")
-        elif kind == "name":
+        if kind == "name":
             lines_md.append(f"### {clean}")
         elif kind == "contact":
             lines_md.append(f"*{clean}*")
@@ -393,6 +475,8 @@ def render_tailored_preview_markdown(full_resume_text, replacements):
             lines_md.append(f"\n**{clean.upper()}**")
         elif kind == "subheader":
             lines_md.append(f"**{clean}**")
+        elif kind == "subbullet":
+            lines_md.append(f"    - {clean}")
         else:  # bullet
             lines_md.append(f"- {clean}")
 
