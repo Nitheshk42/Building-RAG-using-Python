@@ -1,11 +1,15 @@
 import streamlit as st
 import os
 import shutil
-from src.document_loader import load_documents
-from src.text_splitter import split_documents
-from src.embeddings import get_embeddings
-from src.vector_store import create_vector_store
 from src.auth import set_profile_level, mark_resume_uploaded
+
+# NOTE: document_loader / text_splitter / embeddings / vector_store are imported lazily
+# inside process_resume() below, not here. Those pull in torch, sentence-transformers,
+# and chromadb - a genuinely heavy import chain. Importing onboarding.py just to show the
+# "upload your resume" screen was forcing that entire chain to load before the process
+# could even bind to $PORT, which is what was causing connection timeouts on cold starts.
+# Deferring them means the app boots instantly and only pays that cost once, at the moment
+# a resume is actually being processed.
 
 LEVELS = ["Junior", "Mid-Level", "Senior", "Architect"]
 
@@ -28,6 +32,11 @@ def process_resume(uploaded_files, username):
         file_path = os.path.join(data_dir, uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
+
+    from src.document_loader import load_documents
+    from src.text_splitter import split_documents
+    from src.embeddings import get_embeddings
+    from src.vector_store import create_vector_store
 
     documents = load_documents(data_dir)
     splits = split_documents(documents)

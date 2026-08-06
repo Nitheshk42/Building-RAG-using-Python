@@ -22,14 +22,17 @@ if not hasattr(_np, "unicode_"):
     _np.unicode_ = _np.str_
 
 import streamlit as st
-from src.visual_pipeline import display_visual_pipeline
-from src.chat import display_chat_interface
-from src.hybrid_chat import display_hybrid_chat
-from src.level_chat import display_level_chat
-from src.jd_chat import display_jd_prep
-from src.resume_tailor_ui import display_resume_tailor
+# NOTE: the tab modules (visual_pipeline, chat, hybrid_chat, level_chat, jd_chat) and
+# onboarding are intentionally NOT imported here at module level. They pull in torch,
+# sentence-transformers, chromadb, matplotlib, and scikit-learn - a genuinely heavy import
+# chain. Importing them eagerly meant that chain had to fully load before this process could
+# even bind to $PORT, which was causing connection timeouts on cold starts (Render's boot
+# window, and similar issues elsewhere) - the health check couldn't get a response in time
+# even though the actual app logic (login page) doesn't need any of that yet. They're
+# imported lazily just below, right where each one is actually used, so the login/auth gate
+# renders near-instantly and the heavy stack only loads once a user is authenticated and
+# actually reaches a tab that needs it.
 from src.auth_ui import display_auth
-from src.onboarding import display_onboarding, process_resume
 from src.auth import get_profile, save_feedback
 
 st.set_page_config(page_title="StudySage", page_icon="📚", layout="wide")
@@ -131,6 +134,7 @@ profile = st.session_state.get("auth_profile") or get_profile(st.session_state.a
 st.session_state.auth_profile = profile
 
 if not profile.get("resume_uploaded"):
+    from src.onboarding import display_onboarding
     display_onboarding()
     st.stop()
 
@@ -151,6 +155,7 @@ def _confirm_reprocess_dialog():
     col_yes, col_cancel = st.columns(2)
     with col_yes:
         if st.button("🔄 Yes, reprocess", use_container_width=True, type="primary"):
+            from src.onboarding import process_resume
             with st.spinner("📄 Reprocessing your new resume..."):
                 process_resume(st.session_state.pending_new_resume, st.session_state.auth_user)
             st.session_state.pop("pending_new_resume", None)
@@ -207,21 +212,27 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 ])
 
 with tab1:
+    from src.visual_pipeline import display_visual_pipeline
     display_visual_pipeline()
 
 with tab2:
+    from src.chat import display_chat_interface
     st.title("💬 StudySage Chat")
     st.write("Ask questions about your processed documents")
     display_chat_interface()
 
 with tab3:
+    from src.hybrid_chat import display_hybrid_chat
     display_hybrid_chat()
 
 with tab4:
+    from src.level_chat import display_level_chat
     display_level_chat()
 
 with tab5:
+    from src.jd_chat import display_jd_prep
     display_jd_prep()
 
 with tab6:
+    from src.resume_tailor_ui import display_resume_tailor
     display_resume_tailor()
