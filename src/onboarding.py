@@ -13,10 +13,14 @@ from src.auth import set_profile_level, mark_resume_uploaded
 
 LEVELS = ["Junior", "Mid-Level", "Senior", "Architect"]
 
+# Same reasoning as auth.py/vector_store.py: uploaded resume files need to live on a
+# persistent mount in production (Cloud Run's local disk doesn't survive across instances).
+DATA_ROOT = os.getenv("APP_DATA_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 def user_data_dir(username):
     safe_name = username.replace("/", "_").replace("\\", "_")
-    return os.path.join("data", safe_name)
+    return os.path.join(DATA_ROOT, "data", safe_name)
 
 
 def process_resume(uploaded_files, username):

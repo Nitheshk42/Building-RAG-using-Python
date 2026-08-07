@@ -74,8 +74,9 @@ def display_visual_pipeline():
     st.title("📚 Visual RAG Pipeline - How It Actually Works")
     st.write("🎯 Watch how documents become searchable magic ✨")
 
+    from src.onboarding import user_data_dir
     username = st.session_state.get("auth_user", "default")
-    data_dir = os.path.join("data", username.replace("/", "_").replace("\\", "_"))
+    data_dir = user_data_dir(username)
 
     # Sidebar Upload
     with st.sidebar:

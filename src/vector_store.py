@@ -4,7 +4,11 @@ from pathlib import Path
 from langchain_community.vectorstores import Chroma
 from src.embeddings import get_embeddings
 
-CHROMA_DB_ROOT = Path(__file__).parent.parent / "chroma_db"
+# Same reasoning as auth.py: on Cloud Run the local filesystem doesn't survive across
+# instances, so per-user vector stores need to live on a persistent mount in production.
+# APP_DATA_DIR (set via env var, pointed at a mounted volume) overrides the default local path.
+DATA_ROOT = Path(os.getenv("APP_DATA_DIR", str(Path(__file__).parent.parent)))
+CHROMA_DB_ROOT = DATA_ROOT / "chroma_db"
 
 
 def _user_path(username=None):
