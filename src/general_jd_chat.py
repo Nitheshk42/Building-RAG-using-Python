@@ -85,7 +85,7 @@ def display_general_jd_prep():
     for idx, item in enumerate(items, 1):
         _level_answer_block(idx, item)
 
-    if st.button("➕ 5 more questions", use_container_width=True):
+    if st.button("➕ 5 more questions", use_container_width=True, key="general_jd_more_button"):
         with st.spinner("🧠 Generating 5 more questions (no repeats)..."):
             existing_questions = [i["question"] for i in st.session_state.general_jd_items]
             more_items = generate_general_jd_questions(

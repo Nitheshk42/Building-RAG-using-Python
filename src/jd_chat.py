@@ -117,7 +117,7 @@ def display_jd_prep():
                 _qa_card(item, idx)
 
     st.write("")
-    if st.button("➕ 5 more questions", use_container_width=True):
+    if st.button("➕ 5 more questions", use_container_width=True, key="my_jd_more_button"):
         vectorstore = st.session_state.get("vectorstore") or get_vectorstore(st.session_state.get("auth_user"))
         if not vectorstore:
             st.warning("⚠️ Please go to Visual tab and process documents first.")
