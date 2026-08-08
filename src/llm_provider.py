@@ -37,12 +37,27 @@ def get_llm(temperature=0.3, max_tokens=1024):
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise ValueError("GROQ_API_KEY missing! Check .env file exists at project root")
-    return ChatGroq(
+
+    primary = ChatGroq(
         model="llama-3.3-70b-versatile",
         temperature=temperature,
         max_tokens=max_tokens,
         api_key=api_key,
     )
+    # Groq's free tier gives each model its OWN separate daily token quota. The 70B model's
+    # quota is small and easy to exhaust (hit "Rate limit reached ... tokens per day" during
+    # testing). llama-3.1-8b-instant has a much higher free-tier quota, so it's wired in as an
+    # automatic fallback: if the 70B call fails for ANY reason (rate limit, timeout, etc.),
+    # LangChain's built-in with_fallbacks() transparently retries on the smaller model instead
+    # of the whole app breaking. Answers from the fallback are a bit less detailed, but the app
+    # stays usable instead of hard-stopping until the quota resets.
+    fallback = ChatGroq(
+        model="llama-3.1-8b-instant",
+        temperature=temperature,
+        max_tokens=max_tokens,
+        api_key=api_key,
+    )
+    return primary.with_fallbacks([fallback])
 
 
 def _has_session_state():

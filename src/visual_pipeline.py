@@ -228,22 +228,33 @@ def display_visual_pipeline():
         if st.button("💾 Create Vector Database", use_container_width=True):
             if 'splits' not in st.session_state:
                 st.error("❌ Complete Stage 1 first!")
+            elif st.session_state.get("vectorstore_creating"):
+                # Reentrancy guard: Streamlit can occasionally rerun a script mid-execution
+                # (another widget's state changing while this block is still running), which
+                # can abort a chromadb write partway through and leave its SQLite file in a
+                # bad state ("attempt to write a readonly database" on the next attempt).
+                # Refusing a second concurrent call for this session avoids that race.
+                st.warning("⏳ Already creating the vector DB — please wait for it to finish.")
             else:
-                splits = st.session_state.splits
-                embeddings_model = get_embeddings()
-                
-                vectorstore = create_vector_store(splits, embeddings_model, username=username)
-                st.session_state.vectorstore = vectorstore
-                st.session_state.embeddings_model = embeddings_model
-                
-                # Store embeddings for visualization
-                all_embeddings = []
-                for split in splits:
-                    emb = embeddings_model.embed_query(split.page_content[:300])
-                    all_embeddings.append(emb)
-                st.session_state.all_embeddings = np.array(all_embeddings)
-                
-                st.success("✅ Vector DB created with HNSW index!")
+                st.session_state.vectorstore_creating = True
+                try:
+                    splits = st.session_state.splits
+                    embeddings_model = get_embeddings()
+
+                    vectorstore = create_vector_store(splits, embeddings_model, username=username)
+                    st.session_state.vectorstore = vectorstore
+                    st.session_state.embeddings_model = embeddings_model
+
+                    # Store embeddings for visualization
+                    all_embeddings = []
+                    for split in splits:
+                        emb = embeddings_model.embed_query(split.page_content[:300])
+                        all_embeddings.append(emb)
+                    st.session_state.all_embeddings = np.array(all_embeddings)
+
+                    st.success("✅ Vector DB created with HNSW index!")
+                finally:
+                    st.session_state.vectorstore_creating = False
 
         if 'vectorstore' in st.session_state:
             st.subheader("🗺️ Visual: The HNSW Layered Graph")

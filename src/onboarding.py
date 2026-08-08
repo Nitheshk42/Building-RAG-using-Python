@@ -27,31 +27,43 @@ def process_resume(uploaded_files, username):
     """Saves uploaded resume file(s), wipes any previous resume for this user,
     and reprocesses into a fresh vector store. Used by both onboarding and the
     'upload a different resume' flow — no dependency on the Visual tab."""
-    data_dir = user_data_dir(username)
-    if os.path.exists(data_dir):
-        shutil.rmtree(data_dir)  # clear previous resume for this user
-    os.makedirs(data_dir, exist_ok=True)
+    if st.session_state.get("vectorstore_creating"):
+        # Reentrancy guard: Streamlit can occasionally rerun a script mid-execution (another
+        # widget's state changing while this is still running), which can abort a chromadb
+        # write partway through and leave its SQLite file in a bad state ("attempt to write a
+        # readonly database" on the next attempt). Refusing a second concurrent call for this
+        # session avoids that race.
+        st.warning("⏳ Already processing a resume — please wait for it to finish.")
+        return
+    st.session_state.vectorstore_creating = True
+    try:
+        data_dir = user_data_dir(username)
+        if os.path.exists(data_dir):
+            shutil.rmtree(data_dir)  # clear previous resume for this user
+        os.makedirs(data_dir, exist_ok=True)
 
-    for uploaded_file in uploaded_files:
-        file_path = os.path.join(data_dir, uploaded_file.name)
-        with open(file_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+        for uploaded_file in uploaded_files:
+            file_path = os.path.join(data_dir, uploaded_file.name)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
 
-    from src.document_loader import load_documents
-    from src.text_splitter import split_documents
-    from src.embeddings import get_embeddings
-    from src.vector_store import create_vector_store
+        from src.document_loader import load_documents
+        from src.text_splitter import split_documents
+        from src.embeddings import get_embeddings
+        from src.vector_store import create_vector_store
 
-    documents = load_documents(data_dir)
-    splits = split_documents(documents)
-    embeddings_model = get_embeddings()
-    vectorstore = create_vector_store(splits, embeddings_model, username=username)
+        documents = load_documents(data_dir)
+        splits = split_documents(documents)
+        embeddings_model = get_embeddings()
+        vectorstore = create_vector_store(splits, embeddings_model, username=username)
 
-    st.session_state.splits = splits
-    st.session_state.documents = documents
-    st.session_state.embeddings_model = embeddings_model
-    st.session_state.vectorstore = vectorstore
-    mark_resume_uploaded(username)
+        st.session_state.splits = splits
+        st.session_state.documents = documents
+        st.session_state.embeddings_model = embeddings_model
+        st.session_state.vectorstore = vectorstore
+        mark_resume_uploaded(username)
+    finally:
+        st.session_state.vectorstore_creating = False
 
 
 def display_onboarding():
