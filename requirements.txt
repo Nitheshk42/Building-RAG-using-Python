@@ -2,7 +2,7 @@
 streamlit
 python-dotenv
 bcrypt
-numpy<2.0.0
+numpy<3.0.0
 matplotlib
 scikit-learn
 
@@ -11,7 +11,6 @@ langchain
 langchain-community
 langchain-core
 langchain-text-splitters
-langchain-huggingface
 
 # Pinned: langchain-core -> langsmith pulls zstandard, and the resolver was landing on
 # 0.23.0 which has no prebuilt wheel for Python 3.14 (forces a source build that fails
@@ -19,17 +18,24 @@ langchain-huggingface
 zstandard>=0.24.0
 
 # Embeddings
-sentence-transformers
+# NOTE: sentence-transformers / langchain-huggingface (and the torch + transformers +
+# onnxruntime they pull in, ~800MB) were removed on purpose. Embeddings now call Hugging
+# Face's hosted Inference API instead (see src/embeddings.py) via
+# langchain_community.embeddings.HuggingFaceInferenceAPIEmbeddings, which only needs plain
+# `requests` (already a transitive dep) - no local model weights, no torch.
 
 # Vector Store
-# Pinned to a pre-Rust-binding release: newer chromadb (0.5+) added a multi-tenant
-# "admin database" layer (chromadb.Client -> _validate_tenant_database -> get_tenant)
-# backed by Rust bindings that are unreliable on very new Python versions like 3.14 -
-# exactly the failure this project kept hitting. 0.4.24 uses the older, simpler local
-# persistence path and never invokes that tenant-validation code at all.
-# NOTE: chromadb 0.4.24 still uses removed NumPy aliases (np.float_, np.uint) internally,
-# which is why numpy is pinned to <2.0.0 above - NumPy 2.0 deleted those aliases.
-chromadb==0.4.24
+# We used to pin chromadb==0.4.24 to dodge a Rust-binding bug that only hit Python 3.14
+# (Streamlit Cloud's runtime at the time). Since local dev, the Docker image, and Cloud Run
+# all now standardize on Python 3.11, that specific reason no longer applies - and 0.4.24
+# turned out to have ITS OWN separate tenant-bootstrap bug (chromadb.Client() ->
+# _validate_tenant_database failing with "Could not connect to tenant default_tenant" even
+# on a clean, correctly-versioned setup). langchain_community's Chroma wrapper uses that
+# old, deprecated chromadb.Client() global-singleton factory internally - the fix is moving
+# to the dedicated langchain-chroma package below, which uses chromadb.PersistentClient()
+# directly (the modern, non-deprecated, per-directory client) and never hits that code path.
+langchain-chroma==0.2.6
+chromadb>=1.0.20,<2.0.0
 # Linux-only (no macOS wheels exist) - not needed locally, app.py already skips it
 # gracefully via try/except if it's missing.
 pysqlite3-binary; sys_platform == "linux"
@@ -41,8 +47,12 @@ pypdf
 docx2txt
 python-docx
 
-# LLM (for Day 2)
+# LLM
 langchain-groq
+# DeepSeek's API is OpenAI-compatible, so langchain-openai's ChatOpenAI talks to it directly
+# by pointing base_url at DeepSeek instead of OpenAI (see src/llm_provider.py). Lets users
+# pick Groq vs DeepSeek from the sidebar without adding a whole separate SDK.
+langchain-openai
 
 # Optional but useful
 tiktoken

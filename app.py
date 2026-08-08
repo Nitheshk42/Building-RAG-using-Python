@@ -172,6 +172,13 @@ with st.sidebar:
     st.markdown(f"👤 **{st.session_state.auth_user}**")
     st.caption(f"Level: {profile.get('level', 'Not set')}")
 
+    from src.llm_provider import PROVIDERS, DEFAULT_PROVIDER
+    provider_labels = list(PROVIDERS.keys())
+    current_label = next((k for k, v in PROVIDERS.items() if v == st.session_state.get("llm_provider", DEFAULT_PROVIDER)), provider_labels[0])
+    chosen_label = st.selectbox("🧠 Answer engine", provider_labels, index=provider_labels.index(current_label))
+    st.session_state.llm_provider = PROVIDERS[chosen_label]
+    st.caption("Switches which LLM generates answers across every tab.")
+
     with st.expander("📄 Upload a different resume"):
         st.caption("One file only.")
         new_file = st.file_uploader(
@@ -202,12 +209,13 @@ with st.sidebar:
 if "pending_new_resume" in st.session_state:
     _confirm_reprocess_dialog()
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📖 Visual RAG Learning",
     "💬 Chat Assistant",
     "🔀 Hybrid Chat",
-    "🪜 Level Answers",
-    "📋 JD Answers",
+    "🪜 My EXP Level Answers",
+    "📋 My JD Answers",
+    "🧠 General JD Answers",
     "🎯 Resume Tailor"
 ])
 
@@ -234,5 +242,9 @@ with tab5:
     display_jd_prep()
 
 with tab6:
+    from src.general_jd_chat import display_general_jd_prep
+    display_general_jd_prep()
+
+with tab7:
     from src.resume_tailor_ui import display_resume_tailor
     display_resume_tailor()

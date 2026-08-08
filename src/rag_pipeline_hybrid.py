@@ -1,24 +1,11 @@
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
-import os
 from pathlib import Path
+from src.llm_provider import get_llm as _get_llm
 
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(env_path, override=True)
-
-
-def _get_llm(temperature=0.3, max_tokens=1024):
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY missing! Check .env file exists at project root")
-    return ChatGroq(
-        model="llama-3.3-70b-versatile",
-        temperature=temperature,
-        max_tokens=max_tokens,
-        api_key=api_key
-    )
 
 
 def format_docs(docs):
@@ -111,33 +98,53 @@ Answer strictly from the resume context:"""
 
 LEVEL_INSTRUCTIONS = {
     "Junior": (
-        "Answer as a JUNIOR engineer would in an interview: keep it simple, focus on "
-        "what was built and the basic how, avoid heavy jargon, show willingness to learn."
+        "Explain it the way a JUNIOR engineer would: simpler vocabulary, less discussion of "
+        "tradeoffs - but still describe the ACTUAL, SPECIFIC steps taken (which tool did what,"
+        " in what order, on what data) using the real details from the resume. 'Simple' means"
+        " simple to follow, not vague - never replace real mechanics with a generic summary "
+        "like 'we built a pipeline to process data.'"
     ),
     "Mid-Level": (
-        "Answer as a MID-LEVEL engineer would in an interview: solid technical detail, "
-        "explain the concrete decisions made and common patterns/tools used."
+        "Explain the concrete implementation decisions: which specific tool/service handled "
+        "which step, why that tool for that step, and the actual sequence of the pipeline/system "
+        "as evidenced in the resume."
     ),
     "Senior": (
-        "Answer as a SENIOR engineer would in an interview: go into technical tradeoffs, "
-        "why alternatives were rejected, edge cases, and how you'd mentor others on this."
+        "Go into technical tradeoffs grounded in the specific tools/scale mentioned in the "
+        "resume: why alternatives were rejected, edge cases that specific setup would hit, "
+        "and how you'd mentor others through it."
     ),
     "Architect": (
-        "Answer as a SOLUTIONS ARCHITECT would in an interview: focus on system-level design, "
-        "scalability, reliability, cross-team/cross-service concerns, and long-term tradeoffs."
+        "Frame it at the system level using the specific services/architecture from the "
+        "resume: scalability, reliability, cross-team/cross-service concerns, and long-term "
+        "tradeoffs of THAT actual setup, not a generic architecture essay."
     ),
 }
 
 
 def get_level_chain(vectorstore, level):
     """Answers the same question calibrated to a specific seniority level."""
-    llm = _get_llm(temperature=0.5, max_tokens=1500)
+    llm = _get_llm(temperature=0.4, max_tokens=1800)
     instruction = LEVEL_INSTRUCTIONS.get(level, LEVEL_INSTRUCTIONS["Mid-Level"])
     template = """You are helping prepare interview answers based on a resume.
 
-SPECIFICITY RULE: If the resume context contains concrete numbers, metrics, config values,
-or tool versions, quote them verbatim rather than paraphrasing into generic statements —
-concrete detail is what makes an answer credible in an interview.
+CRITICAL - ACTUAL MECHANICS, NOT SUMMARY: The answer must describe WHAT was actually built and
+HOW, step by step, using the real tools/services/data named in the resume context - not a
+one-line summary of the outcome. A bad answer says "I built a pipeline to ingest and transform
+data." A good answer says specifically which service ingested the data, which tool transformed
+it, what format it landed in, and why, using names/numbers straight from the context below.
+
+SPECIFICITY RULE: Quote concrete numbers, metrics, config values, and tool versions from the
+resume context verbatim - never paraphrase them into generic statements.
+
+RECENCY RULE: If asked about the "recent," "current," "latest," or "most recent" project/role,
+identify the entry marked "Current"/"Present" (or the latest start date) among ALL entries in
+the context, and answer about that one specifically - do not default to whichever appears first.
+
+DO NOT relabel the candidate's actual job title or seniority from the resume - if the resume
+says "Senior Data Engineer," keep that as the real fact. The Junior/Mid/Senior/Architect level
+below only controls HOW MUCH DEPTH and TECHNICAL VOCABULARY to use in explaining it, not what
+the person's real title was.
 
 RESUME CONTEXT:
 {context}
@@ -146,16 +153,16 @@ QUESTION: {question}
 
 """ + instruction + """
 
-Keep the answer focused and interview-ready (not a generic essay), but don't sacrifice
-concrete detail for brevity.
+Keep the answer focused and interview-ready (not a generic essay), but never sacrifice the
+real, specific mechanics for brevity.
 
 Answer:"""
     prompt = ChatPromptTemplate.from_template(template)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 15})
 
     chain = (
         {
-            "context": lambda x: format_docs(retriever.invoke(x["question"])),
+            "context": lambda x: format_docs(retriever.invoke(_retrieval_query(x["question"]))),
             "question": lambda x: x["question"]
         }
         | prompt
@@ -293,6 +300,92 @@ Begin now:"""
                 answer += " " + line.strip()
         if question and answer:
             items.append({"category": category, "question": question, "answer": answer})
+    return items
+
+
+def generate_general_jd_questions(jd_text, num_questions=6, exclude_questions=None):
+    """Given ONLY a job description - no resume, no retrieval, no candidate-specific context
+    at all - generates likely interview questions the way a general-purpose LLM (ChatGPT-style)
+    would if you just pasted the JD in and asked for interview prep. For EACH question, answers
+    are generated at all four seniority levels (Junior/Mid-Level/Senior/Architect) using generic,
+    best-practice domain knowledge - deliberately NOT grounded in anyone's actual resume."""
+    llm = _get_llm(temperature=0.6, max_tokens=4000)
+
+    avoid_block = ""
+    if exclude_questions:
+        avoid_list = "\n".join(f"- {q}" for q in exclude_questions)
+        avoid_block = f"\nDo NOT repeat or closely rephrase any of these already-asked questions:\n{avoid_list}\n"
+
+    level_desc = "\n".join(f"- {lvl}: {instr}" for lvl, instr in LEVEL_INSTRUCTIONS.items())
+
+    template = """You are an expert technical interviewer. Below is a JOB DESCRIPTION only -
+you have NO candidate resume, NO personal background, nothing specific to any individual.
+Generate interview questions and answers purely from general domain expertise for this role,
+the same way you'd answer if someone pasted just this JD into a general-purpose AI assistant
+and asked for interview prep.
+
+JOB DESCRIPTION:
+{jd_text}
+
+Generate exactly {num_questions} likely interview questions for this role, covering a mix of
+technical and role-relevant conceptual questions grounded in what the JD actually asks for.
+{avoid_block}
+For EACH question, write FOUR separate answers - one per seniority level below. Each answer
+must be genuinely different in depth and framing, not the same content reworded:
+{level_desc}
+
+Answers should read like strong, generic best-practice interview answers - the kind a
+well-prepared candidate at that level would give. Do NOT invent a fake personal story, company
+name, or "I did X at my last job" claim - keep answers framed around approach, reasoning, and
+domain knowledge rather than fabricated personal history.
+
+For EACH question, output in this EXACT format (use "===" as a separator between questions):
+
+Question: <the interview question>
+Junior: <junior-level answer, 3-5 sentences>
+Mid-Level: <mid-level answer, 3-5 sentences>
+Senior: <senior-level answer, 4-6 sentences, tradeoffs/depth>
+Architect: <architect-level answer, 4-6 sentences, system-level framing>
+===
+
+Begin now:"""
+    prompt = ChatPromptTemplate.from_template(template)
+    chain = prompt | llm | StrOutputParser()
+    result = chain.invoke({
+        "jd_text": jd_text, "num_questions": num_questions,
+        "avoid_block": avoid_block, "level_desc": level_desc,
+    })
+
+    items = []
+    for block in result.split("==="):
+        block = block.strip()
+        if not block:
+            continue
+        question = ""
+        answers = {"Junior": "", "Mid-Level": "", "Senior": "", "Architect": ""}
+        current_key = None
+        for line in block.splitlines():
+            stripped = line.strip()
+            low = stripped.lower()
+            if low.startswith("question:"):
+                question = stripped.split(":", 1)[1].strip()
+                current_key = None
+            elif low.startswith("junior:"):
+                answers["Junior"] = stripped.split(":", 1)[1].strip()
+                current_key = "Junior"
+            elif low.startswith("mid-level:") or low.startswith("mid level:"):
+                answers["Mid-Level"] = stripped.split(":", 1)[1].strip()
+                current_key = "Mid-Level"
+            elif low.startswith("senior:"):
+                answers["Senior"] = stripped.split(":", 1)[1].strip()
+                current_key = "Senior"
+            elif low.startswith("architect:"):
+                answers["Architect"] = stripped.split(":", 1)[1].strip()
+                current_key = "Architect"
+            elif current_key and stripped:
+                answers[current_key] += " " + stripped
+        if question and any(answers.values()):
+            items.append({"question": question, "answers": answers})
     return items
 
 

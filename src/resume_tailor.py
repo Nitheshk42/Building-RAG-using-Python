@@ -1,24 +1,11 @@
 import re
 import difflib
 import io
-import os
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from docx import Document as DocxDocument
 from docx.shared import Pt
-
-
-def _get_llm(temperature=0.4, max_tokens=3000):
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY missing! Check .env file exists at project root")
-    return ChatGroq(
-        model="llama-3.3-70b-versatile",
-        temperature=temperature,
-        max_tokens=max_tokens,
-        api_key=api_key
-    )
+from src.llm_provider import get_llm as _get_llm
 
 
 _ATS_STOPWORDS = {
@@ -103,7 +90,7 @@ def analyze_resume_for_jd(resume_text, jd_text):
       draft bullet if there's an honest, plausible tie-in to real project context.
     Nothing is ever auto-applied - the original text is only changed once the user checks a
     suggestion on, and only that approved text gets added."""
-    llm = _get_llm()
+    llm = _get_llm(temperature=0.4, max_tokens=3000)
     template = """You are a resume coach. Below is a candidate's RESUME and a JOB DESCRIPTION.
 
 RESUME:

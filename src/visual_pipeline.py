@@ -252,17 +252,31 @@ def display_visual_pipeline():
             st.pyplot(fig)
             plt.close(fig)
 
-            st.subheader("📖 Reading This Graph")
+            st.subheader("📖 What Just Happened When You Clicked \"Create Vector Database\"")
             st.markdown(f"""
-            The diagram above shows the actual index built from your **{len(st.session_state.splits)} chunks**, drawn as 3 stacked layers:
+            No searching happened yet — this step only **builds the structure** so search can be
+            fast later (that part happens in Stage 4). Here's what building it actually did, in order:
 
-            - 🟡 **Layer 2 (top row)** — a small set of "entry point" nodes. Every search starts here because scanning a few nodes is instant.
-            - 🔵 **Layer 1 (middle row)** — a larger, denser set of nodes. Each top-layer node connects down (dashed gray lines) to nodes here.
-            - 🟢 **Layer 0 (bottom row)** — every single one of your chunks lives here, fully connected to its neighbors (solid green lines) so no chunk is unreachable.
+            **1. Every one of your {len(st.session_state.splits)} chunks was placed on the bottom row.**
+            🟢 Layer 0 (bottom) always holds *every* chunk — nothing is left out, so nothing is ever unreachable.
 
-            The dashed gray lines are the actual connections a search would traverse: start at a Layer 2 node → hop down to the closest Layer 1 node → hop down again into Layer 0 → then walk along Layer 0's neighbor links until no closer chunk exists.
+            **2. A random smaller subset of those chunks was also copied up to Layer 1, and an even smaller subset up to Layer 2.**
+            Think of it like a highway system: 🟢 Layer 0 is every local street, 🔵 Layer 1 is main roads,
+            🟡 Layer 2 (top) is the highway on-ramps — far fewer nodes, so a search can skip across
+            large distances in one hop instead of crawling street-by-street.
 
-            This is why HNSW is fast: instead of comparing your question to all {len(st.session_state.splits)} chunks one by one, it only checks a handful of nodes per layer before narrowing in.
+            **3. Each node was connected (the lines you see) to its nearest neighbor nodes within its own layer**,
+            based on how similar their embeddings are — not their original chunk order. That's why the
+            layout looks scattered rather than sequential: closeness in the diagram approximates
+            closeness in *meaning*, not position in your resume.
+
+            **4. The dashed gray lines link each higher-layer node down to its counterpart below it**,
+            so once Stage 4 runs a real search, it can drop from highway → main road → local street
+            instead of ever touching all {len(st.session_state.splits)} chunks directly.
+
+            **The takeaway:** what you're looking at is a map that makes your resume searchable in a
+            handful of hops instead of a full scan — built once here, used every time you ask a
+            question in the other tabs.
             """)
 
     # ======================== STAGE 4: HNSW SEARCH ========================

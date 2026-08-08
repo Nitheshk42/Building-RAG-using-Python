@@ -15,7 +15,7 @@ def _hero():
     st.markdown("""
     <div style="background: linear-gradient(135deg, #1a73e8 0%, #6c5ce7 100%);
                 padding: 22px 26px; border-radius: 14px; margin-bottom: 18px;">
-        <div style="font-size: 24px; font-weight: 700; color: white;">📋 JD Answers</div>
+        <div style="font-size: 24px; font-weight: 700; color: white;">📋 My JD Answers</div>
         <div style="font-size: 14px; color: rgba(255,255,255,0.9); margin-top: 4px;">
             Paste a job description — get the questions you're likely to be asked, matched
             against your actual resume, with answers ready to go.
